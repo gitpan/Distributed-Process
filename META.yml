@@ -1,0 +1,34 @@
+--- #YAML:1.0
+name: Distributed-Process
+version: 0.03
+license: unknown
+distribution_type: module
+requires:
+  Test::More: 0
+  Time::HiRes: 0
+recommends: {}
+build_requires: {}
+conflicts: {}
+provides:
+  Distributed::Process:
+    file: lib/Distributed/Process.pm
+    version: 0.03
+  Distributed::Process::BaseWorker:
+    file: lib/Distributed/Process/BaseWorker.pm
+  Distributed::Process::Client:
+    file: lib/Distributed/Process/Client.pm
+  Distributed::Process::Interface:
+    file: lib/Distributed/Process/Interface.pm
+  Distributed::Process::LocalWorker:
+    file: lib/Distributed/Process/LocalWorker.pm
+  Distributed::Process::Master:
+    file: lib/Distributed/Process/Master.pm
+  Distributed::Process::MasterWorker:
+    file: lib/Distributed/Process/MasterWorker.pm
+  Distributed::Process::RemoteWorker:
+    file: lib/Distributed/Process/RemoteWorker.pm
+  Distributed::Process::Server:
+    file: lib/Distributed/Process/Server.pm
+  Distributed::Process::Worker:
+    file: lib/Distributed/Process/Worker.pm
+generated_by: Module::Build version 0.21
