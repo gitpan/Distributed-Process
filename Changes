@@ -1,5 +1,12 @@
 Revision history for Distributed-Process
 
+0.04    Tue Mar 15 10:48:48 CET 2005
+        Added /reset command to flush the results between two run().
+        Passing a coderef as argument to a __method called within run() will
+        have it executed for each P::D::RemoteWorker, not only once by the
+        P::D::MasterWorker.
+        worker_args() are now passed on to the P::D::MasterWorker also.
+
 0.03    Fri Mar 11 11:23:40 CET 2005
         Slightly better documentation. First public release (hey, this is very,
         very alpha code. Use with care!)

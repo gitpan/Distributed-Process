@@ -11,7 +11,7 @@ sub __test1 { DEBUG 'Dummy::__test1'; my $self = shift; $self->result("Running t
 sub __test2 { DEBUG 'Dummy::__test2'; my $self = shift; $self->result("Running test2"); }
 sub __test3 { DEBUG 'Dummy::__test3'; my $self = shift; $self->result("Running test3"); }
 
-sub __sleep { my $s = 2+int(rand(10)); DEBUG "sleeping for $s seconds"; sleep $s; return }
+sub __sleep { my $s = 2+int(rand(5)); DEBUG "sleeping for $s seconds"; sleep $s; return }
 
 sub run {
 

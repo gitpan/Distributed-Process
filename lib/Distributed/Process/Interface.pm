@@ -3,6 +3,15 @@ package Distributed::Process::Interface;
 use warnings;
 use strict;
 
+=head1 NAME
+
+Distributed::Process::Interface - a base class for handling a network
+connection and the commands received from it.
+
+=head1 DESCRIPTION
+
+=cut
+
 use IO::Socket;
 use Socket qw/ :crlf /;
 use Distributed::Process;
@@ -11,6 +20,37 @@ use Thread::Semaphore;
 our @ISA = qw/ Distributed::Process /;
 
 my $CAN_SEND = new Thread::Semaphore;
+
+=head2 Methods
+
+=over 4
+
+=item B<command_handlers>
+
+Returns a list of lists defining patterns against which to try and match a
+line, and what to do if a line matches it.
+
+Subclasses may overload this class to enable other commands:
+
+    sub command_handlers {
+	my $self = shift;
+	my @c = $self->SUPER::command_handlers();
+	push @c, [ qr/regex/, sub { 'what to do with line' . $_[0] }, 'test' ];
+	push @c, [ qr/^another/i, sub { $self->do_something(@_) }, 'another test' ];
+    }
+
+The first item in each array ref is a regular expression, against which the
+lines coming in through the input stream will be matched. When a match is
+found, the second item is used.
+
+If the second item is a string, it is sent back, i.e., printed to the output
+stream. If is a coderef, that coderef is executed, passing it the incoming
+line. The list of values returned by the coderef are sent to the output stream.
+
+The third item is optional and will be used in debugging messages to identify
+which regular expression is being used.
+
+=cut
 
 sub command_handlers {
 
@@ -21,6 +61,20 @@ sub command_handlers {
     );
 }
 
+=item B<handle_line> I<LIST>
+
+Compares a line with the patterns returned by command_handlers() and, if the
+pattern matches, run the corresponding callback or returns the corresponding
+string. Once a pattern has matched, handle_line() returns and the remaining
+patterns are not checked.
+
+The callbacks are invoked with the full I<LIST> of arguments to handle_line(),
+although only the first argument is matched against the regular expression.
+
+Returns C<undef> if no pattern could match.
+
+=cut
+
 sub handle_line {
 
     my $self = shift;
@@ -28,11 +82,9 @@ sub handle_line {
     my @response;
     DEBUG "handling line '@_'";
     foreach ( $self->command_handlers() ) {
-	DEBUG "Testing against $$_[2]" if $$_[2];
 	next unless $_[0] =~ /$$_[0]/;
 	DEBUG "  $$_[2] matched" if $$_[2];
 	if ( ref($$_[1]) eq 'CODE' ) {
-	    DEBUG "found a callback $$_[1]";
 	    @response = ($$_[1]->(@_));
 	}
 	else {
@@ -41,37 +93,18 @@ sub handle_line {
 	last;
     }
     @response = () if @response == 1 && !defined($response[0]);
-    DEBUG 'line handled';
     @response;
-}
-
-sub close {
-
-    my $self = shift;
-    DEBUG 'closing interface';
-    $self->server()->remove_interface($self);
-    $self->out_handle()->close() if $self->in_handle() != $self->out_handle();
-    $self->in_handle()->close();
 }
 
 sub handle {
     goto &in_handle;
 }
 
-#sub send {
-#
-#    my $self = shift;
-#    my $pid = fork;
-#    die "Cannot fork: $!" unless defined $pid;
-#
-#    return 1 if $pid;
-#    my $h = $self->out_handle();
-#    foreach ( @_ ) {
-#	DEBUG "sending: $_";
-#	print $h "$_\n";
-#    }
-#    exit 0;
-#}
+=item B<send> I<LIST>
+
+Prints each string in I<LIST> with a CR+LF sequence to the output stream.
+
+=cut
 
 sub send {
 
@@ -87,6 +120,30 @@ sub send {
     #$self->out_handle()->flush();
 }
 
+=back
+
+=head2 Attributes
+
+=over 4
+
+=item B<server>
+
+The C<P::D::Server> under which the Interface is running.
+
+=item B<handle>
+
+=item B<in_handle>
+
+The C<IO::Handle> object that represents the input stream.
+
+=item B<out_handle>
+
+The C<IO::Handle> object that represents the output stream.
+
+=back
+
+=cut
+
 foreach my $method ( qw/ server in_handle out_handle / ) {
 
     no strict 'refs';
@@ -98,4 +155,31 @@ foreach my $method ( qw/ server in_handle out_handle / ) {
     };
 }
 
-1;
+=head1 SEE ALSO
+
+L<Distributed::Process::Server>,
+L<Distributed::Process::Client>,
+L<Distributed::Process::Master>,
+L<Distributed::Process::RemoteWorker>
+
+=head1 AUTHOR
+
+Cédric Bouvier, C<< <cbouvi@cpan.org> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to
+C<bug-distributed-process@rt.cpan.org>, or through the web interface at
+L<http://rt.cpan.org>.  I will be notified, and then you'll automatically
+be notified of progress on your bug as I make changes.
+
+=head1 COPYRIGHT & LICENSE
+
+Copyright 2005 Cédric Bouvier, All Rights Reserved.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut
+
+1; # End of Distributed::Process::Interface

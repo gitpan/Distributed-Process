@@ -23,6 +23,12 @@ sub time {
     @result;
 }
 
+sub reset_result {
+
+    my $self = shift;
+    $self->{_result} = [];
+}
+
 sub result {
 
     my $self = shift;

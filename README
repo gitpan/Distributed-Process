@@ -1,15 +1,23 @@
 Distributed-Process
 
-The README is used to introduce the module and provide instructions on
-how to install the module, any machine dependencies it may have (for
-example C compilers and installed libraries) and any other information
-that should be provided before the module is installed.
+This module provides a framework for running a process simultaneously on
+several machines.
 
-A README file is required for CPAN modules since CPAN extracts the README
-file from a module distribution so that people browsing the archive
-can use it get an idea of the modules uses. It is usually a good idea
-to provide version information here so that people can decide whether
-fixes for the module are worth downloading.
+It was first designed to conduct stress tests session, where several computers
+would send queries to a server at the same time, but it might prove useful for
+other purposes.
+
+This distribution provides code to run server to conduct the "workers", and to
+run the client that do the actual work.
+
+The task to distribute must be implemented in a subclass of
+Distributed::Process::Worker, by overloading its run() method. Any call to a
+method whose name starts with a double underscore (__method) will be sent to
+the clients, which will run it, and send the results back to the server for
+analysis.
+
+Please read the documentation for Distributed::Process for further details, and
+remember that this is still alpha code.
 
 INSTALLATION
 
@@ -31,7 +39,7 @@ Alternatively, to install with Module::Build, you can use the following commands
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2005 CÃ©dric Bouvier
+Copyright (C) 2005 Cédric Bouvier
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.

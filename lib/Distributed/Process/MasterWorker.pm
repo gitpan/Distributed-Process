@@ -60,6 +60,14 @@ sub result_received {
     $RESULT_SEMAPHORE->up();
 }
 
+sub reset_result {
+
+    my $self = shift;
+    foreach ( $self->master()->workers() ) {
+	$_->reset_result();
+    }
+}
+
 sub synchro {
 
     my $self = shift;

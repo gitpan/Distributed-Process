@@ -21,13 +21,6 @@ sub command_handlers {
     ]};
 }
 
-sub close {
-
-    my $self = shift;
-    $self->master()->remove_worker($self);
-    $self->SUPER::close(@_);
-}
-
 sub out_handle {
 
     my $self = shift;
@@ -63,6 +56,10 @@ sub go_remote {
 	    *symbol = sub {
 		my $s = shift;
 		local $" = " ";
+		if ( ref($_[0]) eq 'CODE' ) {
+		    my $cref = shift;
+		    unshift @_, $cref->($self);
+		}
 		$s->send("/run $name @_");
 	    };
 	}
@@ -70,6 +67,12 @@ sub go_remote {
 	    # TODO: handle subclasses ?
 	}
     }
+}
+
+sub reset_result {
+
+    my $self = shift;
+    $self->send('/reset_result');
 }
 
 sub result {

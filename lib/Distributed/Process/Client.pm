@@ -15,6 +15,7 @@ sub command_handlers {
     return (
 	$self->SUPER::command_handlers(),
 	[ qr|^/run|, sub { shift; my $cmd = shift; $self->worker()->$cmd(@_) } ],
+	[ qr|^/reset|, sub { $self->worker()->reset_result() } ],
 	[ qr|^/time|, sub { shift; $self->worker()->time(@_) } ],
 	[ qr|^/synchro|, sub { sleep 1; join ' ', @_ } ],
 	[ qr|^/quit|, sub { exit 0; }, '/quit' ],

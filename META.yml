@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name: Distributed-Process
-version: 0.03
+version: 0.04
 license: unknown
 distribution_type: module
 requires:
@@ -12,7 +12,7 @@ conflicts: {}
 provides:
   Distributed::Process:
     file: lib/Distributed/Process.pm
-    version: 0.03
+    version: 0.04
   Distributed::Process::BaseWorker:
     file: lib/Distributed/Process/BaseWorker.pm
   Distributed::Process::Client:

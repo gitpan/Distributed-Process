@@ -87,6 +87,16 @@ sub time {
     $self->$method(@_);
 }
 
+=item B<reset_result>
+
+Flushes the results from memory. This should be called between two calls to
+run() so that the results from the second run are not appended to those of the
+first.
+
+=cut
+
+sub reset_result {}
+
 =item B<result> I<STRING>
 
 =item B<result>

@@ -10,8 +10,8 @@ use IO::Socket;
 use IO::Select;
 $/ = CRLF;
 
-my $n_workers = 2;
-plan tests => 3 * $n_workers;
+my $n_workers = 3;
+plan tests => 6 * $n_workers;
 my $port = 8147;
 
 my @pid;
@@ -63,9 +63,19 @@ sleep 5;
 print $server "/run" . CRLF;
 while ( <$server> ) {
     chomp;
-    /ok/ and print $server "/quit" . CRLF;
+    /ok/ and last;
     /\t/ or next;
     my ($pid, $date, $msg) = split /\t/;
     ok(exists $expected{"$pid:$msg"});
 }
 
+print $server "/reset" . CRLF;
+sleep 1;
+print $server "/run" . CRLF;
+while ( <$server> ) {
+    chomp;
+    /ok/ and print $server "/quit" . CRLF;
+    /\t/ or next;
+    my ($pid, $date, $msg) = split /\t/;
+    ok(exists $expected{"$pid:$msg"});
+}

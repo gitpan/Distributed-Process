@@ -27,6 +27,7 @@ t/09.session.t
 t/10.postpone.t
 t/11.time.t
 t/Dummy.pm
+t/pod-coverage.t
 t/pod.t
 t/Postpone.pm
 t/TestTime.pm

@@ -58,9 +58,6 @@ sub _add_interface {
     $self->{_interfaces}{$interface->handle()} = $interface;
 }
 
-=item B<deselect> I<HANDLE>
-
-=cut
 sub _deselect {
 
     my $self = shift;
@@ -218,8 +215,6 @@ Please report any bugs or feature requests to
 C<bug-distributed-process@rt.cpan.org>, or through the web interface at
 L<http://rt.cpan.org>.  I will be notified, and then you'll automatically
 be notified of progress on your bug as I make changes.
-
-=head1 ACKNOWLEDGEMENTS
 
 =head1 COPYRIGHT & LICENSE
 
