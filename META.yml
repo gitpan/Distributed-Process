@@ -1,18 +1,19 @@
 --- #YAML:1.0
 name: Distributed-Process
-version: 0.05
+version: 0.06
+author:
+  - Cédric Bouvier <cbouvi@cpan.org>
+abstract: |-
+  a framework for running a process simultaneously on several
+  machines.
 license: unknown
-distribution_type: module
 requires:
   Test::More: 0
   Time::HiRes: 0
-recommends: {}
-build_requires: {}
-conflicts: {}
 provides:
   Distributed::Process:
     file: lib/Distributed/Process.pm
-    version: 0.05
+    version: 0.06
   Distributed::Process::BaseWorker:
     file: lib/Distributed/Process/BaseWorker.pm
   Distributed::Process::Client:
@@ -31,4 +32,4 @@ provides:
     file: lib/Distributed/Process/Server.pm
   Distributed::Process::Worker:
     file: lib/Distributed/Process/Worker.pm
-generated_by: Module::Build version 0.21
+generated_by: Module::Build version 0.26

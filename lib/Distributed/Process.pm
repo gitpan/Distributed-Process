@@ -10,11 +10,11 @@ machines.
 
 =head1 VERSION
 
-Version 0.05
+Version 0.06
 
 =cut
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 =head1 SYNOPSIS
 
@@ -129,12 +129,19 @@ use threads;
 use Thread::Semaphore;
 my $CAN_PRINT = new Thread::Semaphore;
 
-our $DEBUG_FLAG;
+our %DEBUG_FLAGS;
 
 use Exporter;
 our @ISA = qw/ Exporter /;
 
-our @EXPORT = qw/ DEBUG /;
+my %message_types = qw/
+    DEBUG DBG
+    INFO  INF
+    WARN  WRN
+    ERROR ERR
+/;
+
+our @EXPORT = keys %message_types;
 
 =head2 Constructor
 
@@ -174,11 +181,11 @@ sub new {
 
 =head2 Exports
 
-This module exports the DEBUG() function that is a no op by default. If you
-import the C<:debug> special tag, the DEBUG() function is turned into one that
+This module exports the DEBUG(), ERROR(), WARN() and INFO() functions that are no ops by default. If you
+import the C<:debug>, C<:error>, C<:warn> and/or C<:info> special tags, the corresponding functions are turned into one that
 prints its arguments to standard error.
 
-You need importing C<:debug> only once for this to take effect. For exemple the
+You need importing the special tags only once for this to take effect. For exemple the
 main program can say:
 
     use Distributed::Process qw/ :debug /;
@@ -187,7 +194,7 @@ While all the other modules just say:
 
     use Distributed::Process;
 
-Still, the C<DEBUG> will become active everywhere.
+Still, the C<DEBUG> function will become active everywhere.
 
 =head2 Functions
 
@@ -195,30 +202,42 @@ Still, the C<DEBUG> will become active everywhere.
 
 =item B<DEBUG> I<LIST>
 
-By default, this function does nothing. However, if at some point the C<:debug>
-tag was imported, DEBUG() will print its arguments to standard error, prepended
+=item B<ERROR> I<LIST>
+
+=item B<WARN> I<LIST>
+
+=item B<INFO> I<LIST>
+
+By default, these functions do nothing. However, if at some point the C<:debug>, C<:error>, C<:warn>, or C<:info>
+tag were imported, these functions will print their arguments to standard error, prepended
 with the Process ID, the fully qualified name of its caller, and the thread id,
 e.g.:
 
-    3147:Package::function(1): message
+    <DBG>3147:Package::function(1): message
+    <ERR>3147:Package::function(1): message
+    <WRN>3147:Package::function(1): message
+    <INF>3147:Package::function(1): message
 
 =cut
-sub DEBUG;
-sub _DEBUG_ON {
-    my $sub = (caller(1))[3];
-    my $tid = threads->self()->tid();
-    $CAN_PRINT->down();
-    print STDERR "$$:$sub($tid): @_\n";
-    $CAN_PRINT->up();
-}
-sub _DEBUG_OFF { }
+
 sub import {
     my $package = shift;
     my %arg = map { $_ => 1 } @_;
-    if ( delete $arg{':debug'} ) {
-	$DEBUG_FLAG = 1;
+    foreach ( keys %message_types ) {
+	my $type = $message_types{$_};
+	$DEBUG_FLAGS{$_} = 1 if delete $arg{"\L:$_"};
+	no strict 'refs';
+	no warnings 'redefine';
+	*$_ = $DEBUG_FLAGS{$_}
+	? sub {
+	    my $sub = (caller(1))[3];
+	    my $tid = threads->self()->tid();
+	    $CAN_PRINT->down();
+	    print STDERR "<$type>$$: $sub($tid): @_\n";
+	    $CAN_PRINT->up();
+	}
+	: sub {};
     }
-    *DEBUG = $DEBUG_FLAG ? *_DEBUG_ON : *_DEBUG_OFF;
     @_ = ($package, keys %arg);
     goto &Exporter::import;
 }

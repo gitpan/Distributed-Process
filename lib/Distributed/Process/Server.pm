@@ -99,7 +99,6 @@ sub listen {
     while ( my @ready = $self->_select()->can_read() ) {
 	DEBUG 'waiting for connections';
 	foreach my $fh ( @ready ) {
-	    DEBUG "$fh is ready";
 	    if ( $fh == $lsn ) {
 		DEBUG 'new connection';
 		my $new_fh = $lsn->accept();
@@ -178,6 +177,11 @@ sub _select {
 =back
 
 =head2 Attributes
+
+The following list describes the attributes of this class. They must only be
+accessed through their accessors.  When called with an argument, the accessor
+methods set their attribute's value to that argument and return its former
+value. When called without arguments, they return the current value.
 
 =over 4
 

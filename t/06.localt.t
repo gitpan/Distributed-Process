@@ -1,3 +1,4 @@
+#!perl -T
 use Test::More;
 
 my @test = qw/ test1 test2 /;

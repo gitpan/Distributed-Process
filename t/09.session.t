@@ -1,3 +1,4 @@
+#!perl -T
 use Test::More;
 use strict;
 
@@ -14,9 +15,7 @@ my $n_workers = 3;
 plan tests => 6 * $n_workers;
 my $port = 8147;
 
-my @pid;
 my %expected;
-my $c = 3;
 for ( 1 .. $n_workers ) {
     my $pid = fork;
 
@@ -28,16 +27,16 @@ for ( 1 .. $n_workers ) {
 	    -worker_class => 'Dummy',
 	    -host => 'localhost',
 	    -port => 8147,
+            -id   => "wrk$_",
 	;
 	$c->run();
 	exit 0;
     }
     else {
-	push @pid, $pid;
-	$expected{"$pid:__test1 RESULT_1"} = 1;
-        $expected{"$pid:__test2 RESULT_2 RESULT_1"} = 1;
-        $expected{"$pid:__test2 RESULT_2 RESULT_2"} = 1;
-        $expected{"$pid:__test3 RESULT_" . $c++} = 1;
+	$expected{"wrk$_:__test1 RESULT_1"} = 1;
+        $expected{"wrk$_:__test2 RESULT_2 RESULT_1"} = 1;
+        $expected{"wrk$_:__test2 RESULT_2 RESULT_2"} = 1;
+        $expected{"wrk$_:__test3 RESULT_" . ($_+2)} = 1;
     }
 }
 
@@ -62,15 +61,16 @@ if ( ! $server_pid ) {
 }
 $parent->close();
 
-DEBUG 'sleeping 5 secs';
-sleep 5;
+while ( <$server> ) {
+    last if /ready to run/;
+}
 print $server "/run" . CRLF;
 while ( <$server> ) {
     chomp;
     /ok/ and last;
     /\t/ or next;
-    my ($pid, $date, $msg) = split /\t/;
-    ok(exists $expected{"$pid:$msg"});
+    my ($id, $date, $msg) = split /\t/;
+    ok(exists $expected{"$id:$msg"});
 }
 
 print $server "/reset" . CRLF;
@@ -80,6 +80,6 @@ while ( <$server> ) {
     chomp;
     /ok/ and print $server "/quit" . CRLF;
     /\t/ or next;
-    my ($pid, $date, $msg) = split /\t/;
-    ok(exists $expected{"$pid:$msg"});
+    my ($id, $date, $msg) = split /\t/;
+    ok(exists $expected{"$id:$msg"});
 }

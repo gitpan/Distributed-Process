@@ -26,7 +26,7 @@ sub result {
 
     my $self = shift;
 
-    DEBUG 'gathering results';
+    INFO 'gathering results';
 
     foreach ( $self->master()->workers() ) {
 	$_->get_result();
@@ -36,12 +36,10 @@ sub result {
     $RESULT_SEMAPHORE->down($down);
     DEBUG "semaphore released";
     my @result;
-    DEBUG 'dequeuing the results';
     DEBUG $RESULT_QUEUE->pending() . ' items in the queue';
     while ( my $line = $RESULT_QUEUE->dequeue_nb() ) {
 	push @result, $line;
     }
-    DEBUG 'results dequeued';
     return @result;
 }
 
@@ -52,10 +50,7 @@ sub result_received {
 
     DEBUG "received results from '$worker'";
     my @result = $worker->result();
-    DEBUG map "  $_", @result;
     $RESULT_QUEUE->enqueue(@result);
-    DEBUG 'queued them';
-    DEBUG $RESULT_QUEUE->pending() . ' items in the queue';
     DEBUG 'upping the semaphore';
     $RESULT_SEMAPHORE->up();
 }
@@ -73,7 +68,7 @@ sub synchro {
     my $self = shift;
     my $token = shift;
 
-    DEBUG "requesting synchro for '$token'";
+    INFO "requesting synchro for '$token'";
 
     foreach ( $self->master()->workers() ) {
 	$_->synchro($token);
@@ -81,7 +76,6 @@ sub synchro {
     my $down = $self->master()->workers();
     DEBUG "downing semaphore by $down";
     $SYNCHRO_SEMAPHORE->down($down);
-    DEBUG "semaphore released";
     DEBUG "synchro for '$token' done";
 }
 
@@ -90,9 +84,6 @@ sub synchro_received {
     my $self = shift;
     my ($worker, $token) = @_;
     DEBUG "received synchro signal for '$token'";
-    #lock($COUNT_SYNCHRO);
-    #$COUNT_SYNCHRO--;
-    #cond_signal $COUNT_SYNCHRO;
     DEBUG 'upping semaphore by 1';
     $SYNCHRO_SEMAPHORE->up();
 }

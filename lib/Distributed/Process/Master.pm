@@ -101,6 +101,18 @@ sub command_handlers {
 
 =over 4
 
+=cut
+
+sub _is_ready_to_run {
+
+    my $self = shift;
+    return unless $self->n_workers() <= $self->workers();
+    foreach ( @{$self->{_workers}} ) {
+        return unless $_->is_ready();
+    }
+    1;
+}
+
 =item B<add_worker> I<WORKER>
 
 =item B<add_worker> I<LIST>
@@ -133,9 +145,8 @@ sub add_worker {
 	$worker->$meth($value);
     }
     push @{$self->{_workers}}, $worker;
-    DEBUG 'new worker arrived';
+    INFO 'new worker arrived';
     $self->send('new worker arrived');
-    $self->send('ready to run') if $self->n_workers() <= $self->workers();
     return $worker;
 }
 
@@ -169,7 +180,22 @@ Returns the list of known C<P::D::Worker> objects. In scalar context, returns th
 sub workers {
 
     my $self = shift;
-    wantarray ? @{$self->{_workers}} : scalar @{$self->{_workers}};
+    wantarray ? sort { $a->id() cmp $b->id() } @{$self->{_workers}} : scalar @{$self->{_workers}};
+}
+
+=item B<worker_ready> I<WORKER>
+
+Workers call this method from their master's when they have received the
+C</worker> command. The master takes this opportunity to check whether all the
+expected workers are connected and whether they are all initialized.
+
+=cut
+
+sub worker_ready {
+
+    my $self = shift;
+    $self->send('ready to run') if $self->_is_ready_to_run();
+    return;
 }
 
 =item B<master_worker>
@@ -200,7 +226,6 @@ sub master_worker {
 		DEBUG "creating function $name in Distributed::Process::MasterWorker";
 		*{"Distributed::Process::MasterWorker::" . $name} = sub {
 		    my $s = shift;
-		    DEBUG $name;
 		    $_->$name(@_) foreach $s->master()->workers();
 		};
 	    }
@@ -234,6 +259,19 @@ sub result_received {
     $self->master_worker()->result_received(@_);
 }
 
+=item B<result>
+
+Returns the list of result() from the C<D::P::MasterWorker>. Subclasses can
+overload this method to filter the results before they are sent to the user.
+
+=cut
+
+sub result {
+
+    my $self = shift;
+    $self->master_worker()->result();
+}
+
 =item B<run>
 
 Spawns a thread to run the work session. The thread will invoke the run()
@@ -252,7 +290,7 @@ sub run {
 	DEBUG 'Spawning the workers';
 	$master_worker->run();
 	DEBUG 'fetching the results';
-	my @result = $master_worker->result();
+	my @result = $self->result();
 	DEBUG 'sending the results';
 	$self->send(@result, 'ok');
 	DEBUG 'Work done';
@@ -312,6 +350,11 @@ sub worker_args {
 =back
 
 =head2 Attributes
+
+The following list describes the attributes of this class. They must only be
+accessed through their accessors.  When called with an argument, the accessor
+methods set their attribute's value to that argument and return its former
+value. When called without arguments, they return the current value.
 
 =over 4
 

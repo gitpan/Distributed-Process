@@ -12,11 +12,11 @@ our @ISA = qw/ Distributed::Process::BaseWorker Distributed::Process::Interface 
 sub command_handlers {
 
     my $self = shift;
-    DEBUG;
     return @{$self->{_command_handlers} ||= [
 	$self->SUPER::command_handlers(),
-	[ qr|/synchro|, sub { my $tok = (split /\s+/, $_[0])[1]; chomp $tok; $self->synchro_received($tok) } ],
-	[ qr|/begin_results|, sub { $self->begin_results() }, 'begin_results' ],
+	[ qr|^/synchro|, sub { my $tok = (split /\s+/, $_[0])[1]; chomp $tok; $self->synchro_received($tok) } ],
+	[ qr|^/begin_results|, sub { $self->begin_results() }, 'begin_results' ],
+        [ qr|^/worker|, sub { $self->id((split /\s+/, $_[0])[1]); $self->master()->worker_ready($self) } ],
     ]};
 }
 
@@ -92,9 +92,7 @@ sub reset_result {
 sub result {
 
     my $self = shift;
-    DEBUG;
     my @r = @{$self->{_result}};
-    DEBUG @r;
     return @r;
 }
 
@@ -123,12 +121,12 @@ sub handle_result {
     my $self = shift;
     DEBUG "Handling result '@_'";
     if ( $_[0] =~ /^ok/ ) {
-	DEBUG "Sending results to master";
+	INFO "Sending results to master";
 	shift @{$self->{_command_handlers}};
 	$self->master()->result_received($self);
     }
     else {
-	DEBUG 'appending result line';
+	INFO 'appending result line';
 	push @{$self->{_result}}, @_;
     }
     return;
@@ -142,7 +140,13 @@ sub time {
     $self->send("/time @arg");
 }
 
-foreach my $method ( qw/ master / ) {
+sub is_ready {
+
+    my $self = shift;
+    return defined($self->id());
+}
+
+foreach my $method ( qw/ id master / ) {
 
     no strict 'refs';
     *$method = sub {

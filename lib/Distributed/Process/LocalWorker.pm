@@ -33,16 +33,15 @@ sub result {
 
     my $self = shift;
 
-    DEBUG __PACKAGE__ . "::result(@_)";
     if ( @_ ) {
-	DEBUG "adding '@_' to results";
+	INFO "adding '@_' to results";
         my $first = shift @_;
         my $time = strftime "%Y%m%d-%H%M%S", localtime;
 	push @{$self->{_result}}, "$time\t$first", @_;
 	return;
     }
     else {
-	DEBUG "returning results";
+	INFO "returning results";
 	return @{$self->{_result} || []};
     }
 }

@@ -55,7 +55,6 @@ which regular expression is being used.
 sub command_handlers {
 
     my $self = shift;
-    DEBUG;
     return (
 	[ qr|/ping|, 'pong' ],
     );
@@ -81,6 +80,7 @@ sub handle_line {
 
     my @response;
     DEBUG "handling line '@_'";
+    warn "$self received undef" unless defined($_[0]);
     foreach ( $self->command_handlers() ) {
 	next unless $_[0] =~ /$$_[0]/;
 	DEBUG "  $$_[2] matched" if $$_[2];
@@ -117,12 +117,16 @@ sub send {
 	select undef, undef, undef, 0.05;
     $CAN_SEND->up();
     }
-    #$self->out_handle()->flush();
 }
 
 =back
 
 =head2 Attributes
+
+The following list describes the attributes of this class. They must only be
+accessed through their accessors.  When called with an argument, the accessor
+methods set their attribute's value to that argument and return its former
+value. When called without arguments, they return the current value.
 
 =over 4
 

@@ -15,7 +15,6 @@ my $n_workers = 5;
 plan tests => 3 * ($n_workers - 1);
 my $port = 8147;
 
-my @pid;
 my %expected;
 for ( 1 .. $n_workers ) {
     my $pid = fork;
@@ -28,13 +27,13 @@ for ( 1 .. $n_workers ) {
 	    -worker_class => 'Postpone',
 	    -host => 'localhost',
 	    -port => 8147,
+            -id  => "wrk$_",
 	;
 	$c->run();
 	exit 0;
     }
     else {
-	push @pid, $pid;
-	$expected{"$pid:Running test$_"} = 1 for 1 .. 3;
+	$expected{"wrk$_:Running test$_"} = 1 for 1 .. 3;
     }
 }
 
@@ -61,13 +60,16 @@ if ( ! $server_pid ) {
 $parent->close();
 
 my %result = ();
-sleep 5;
+while ( <$server> ) {
+    last if /ready to run/;
+}
+
 print $server "/run" . CRLF;
 while ( <$server> ) {
     chomp;
     /^ok/ and print $server "/quit" . CRLF;
     /\t/ or next;
-    my ($pid, $date, $msg) = split /\t/;
+    my ($id, $date, $msg) = split /\t/;
     push @{$result{$msg} ||= []}, $date;
 }
 

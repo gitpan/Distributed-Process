@@ -76,8 +76,7 @@ Exits the program.
 
 Returns the results from the worker. The results are preceded with the line
 C</begin_results> and followed by the word C<ok>. Each result line gets
-prefixed with the client's id() and a tab character (0x09). If the id() has not
-been specified, the process ID is used instead (C<$$>).
+prefixed with the client's id() and a tab character (0x09).
 
 The worker itself returns its result line prefixed with a timestamp. An example
 of output could thus be:
@@ -102,7 +101,7 @@ sub command_handlers {
 	[ qr|^/quit|, sub { exit 0; }, '/quit' ],
 	[ qr|^/get_result|, sub {
             sleep 1;
-            my $id = $self->id() || $$;
+            my $id = $self->id();
             return('/begin_results', (map "$id\t$_", $self->worker()->result()), 'ok');
         } ],
     );
@@ -139,6 +138,7 @@ sub run {
     my $self = shift;
     DEBUG 'connecting';
     my $h = $self->handle();
+    $self->send("/worker " . $self->id());
     while ( <$h> ) {
 	chomp;
 	my @response = $self->handle_line(split /\s+/);
@@ -231,12 +231,18 @@ sub worker_args {
 
 =head2 Attributes
 
+The following list describes the attributes of this class. They must only be
+accessed through their accessors.  When called with an argument, the accessor
+methods set their attribute's value to that argument and return its former
+value. When called without arguments, they return the current value.
+
 =over 4
 
 =item B<id>
 
 A unique identifier for the client. This will be prepended to the lines sent
-back to the server as a response to the C</get_result> command.
+back to the server as a response to the C</get_result> command. The process id
+(C<$$>) is returned if id() is not set.
 
 =item B<worker_class>
 
@@ -252,7 +258,15 @@ The host and port where to connect to the server.
 
 =cut
 
-foreach my $method ( qw/ id worker_class host port / ) {
+sub id {
+
+    my $self = shift;
+    my $old = defined($self->{_id}) ? $self->{_id} : $$;
+    $self->{_id} = $_[0] if @_;
+    return $old;
+}
+
+foreach my $method ( qw/ worker_class host port / ) {
     no strict 'refs';
     *$method = sub {
 	my $self = shift;
