@@ -2,6 +2,8 @@ package Dummy;
 
 use warnings;
 use strict;
+use threads;
+use threads::shared;
 
 use Distributed::Process; # qw/ :debug /;
 use Distributed::Process::Worker;
@@ -13,11 +15,14 @@ sub __test3 { DEBUG 'Dummy::__test3'; my $self = shift; $self->result('__test3 '
 
 sub __sleep { my $s = 2+int(rand(5)); DEBUG "sleeping for $s seconds"; sleep $s; return }
 
-sub get_result_from_list {
+{
+    my $result : shared = 1;
+    sub get_result_from_list {
 
-    my $self = shift;
-    $self->{_result_list} ||= [ map "result_$_", 1 .. 100 ];
-    shift @{$self->{_result_list}};
+	my $self = shift;
+	INFO "get_result_from_list: yielding $result";
+	'result_' . $result++;
+    }
 }
 
 sub run {
@@ -34,7 +39,7 @@ sub run {
     DEBUG 'about to synchronise';
     $self->synchro('meeting');
     DEBUG 'about to run __test3';
-    $self->__test3(sub { $self->get_result_from_list() });
+    $self->__test3($self->get_result_from_list());
 }
 
 1;

@@ -1,3 +1,4 @@
+#!perl -T
 use Test::More;
 use strict;
 
@@ -7,7 +8,6 @@ use Distributed::Process;
 
 use Socket qw/ :crlf /;
 use IO::Socket;
-use IO::Select;
 $/ = CRLF;
 
 my $n_workers = 3;
@@ -25,16 +25,23 @@ for ( 1 .. $n_workers ) {
 	my $c = new Distributed::Process::Client
 	    -worker_class => 'TestTime',
 	    -host => 'localhost',
-	    -port => 8147,
+	    -port => $port,
             -id   => "wrk$_",
 	;
 	$c->run();
 	exit 0;
     }
     else {
-	$expected{"wrk$_:__test1 RESULT_1"} = 1;
-        $expected{"wrk$_:__test2 RESULT_2 RESULT_1"} = 1;
-        $expected{"wrk$_:__test3 RESULT_" . ($_ + 2)} = 1;
+        no warnings 'uninitialized';
+        my $o = 3 * ($_ - 1);
+	$expected{"__test1 RESULT_" . ($o + 1)} = 1;
+	$expected{"__test2 RESULT_" . ($o + 2) . " RESULT_1"} = 1;
+	$expected{"__test3 RESULT_" . ($o + 3)} = 1;
+
+        $o = 3 * ($n_workers + $_ - 1);
+	$expected{"__test1 RESULT_" . ($o + 1)} = 1;
+	$expected{"__test2 RESULT_" . ($o + 2) . " RESULT_2"} = 1;
+	$expected{"__test3 RESULT_" . ($o + 3)} = 1;
     }
 }
 
@@ -53,7 +60,7 @@ if ( ! $server_pid ) {
         -in_handle => $parent,
         -out_handle => $parent,
     ;
-    my $s = new Distributed::Process::Server master => $m, port => 8147;
+    my $s = new Distributed::Process::Server master => $m, port => $port;
     $s->listen();
     exit 0;
 }
@@ -73,6 +80,6 @@ while ( <$server> ) {
         is($n, sprintf("%.0f", $t));
     }
     else {
-        ok($expected{"$id:$msg"});
+        ok($expected{$msg});
     }
 }

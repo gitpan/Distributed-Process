@@ -18,12 +18,12 @@ pod_coverage_ok('Distributed::Process::Interface', $trustme);
 push @{$trustme->{trustme}}, qr/^(?:command_handlers|(?:in_|out_)?handle)$/;
 pod_coverage_ok('Distributed::Process::Master', $trustme);
 pod_coverage_ok('Distributed::Process::Client', $trustme);
-{
-local $TODO = 'Not documented yet';
 
 # Subclasses of P::D::BaseWorker
 $trustme = { trustme => [ qr/^(?:new|synchro|run|postpone|time|result)$/ ] };
 pod_coverage_ok('Distributed::Process::LocalWorker', $trustme);
+{
+local $TODO = 'Not documented yet';
 pod_coverage_ok('Distributed::Process::MasterWorker', $trustme);
 pod_coverage_ok('Distributed::Process::Worker', $trustme);
 

@@ -26,14 +26,14 @@ for ( 1 .. $n_workers ) {
 	my $c = new Distributed::Process::Client
 	    -worker_class => 'Postpone',
 	    -host => 'localhost',
-	    -port => 8147,
+	    -port => $port,
             -id  => "wrk$_",
 	;
 	$c->run();
 	exit 0;
     }
     else {
-	$expected{"wrk$_:Running test$_"} = 1 for 1 .. 3;
+	$expected{"Running test$_"} = 1 for 1 .. 3;
     }
 }
 
@@ -53,7 +53,7 @@ if ( ! $server_pid ) {
         -out_handle => $parent,
 	-frequency => .25,
     ;
-    my $s = new Distributed::Process::Server master => $m, port => 8147;
+    my $s = new Distributed::Process::Server master => $m, port => $port;
     $s->listen();
     exit 0;
 }
@@ -73,18 +73,20 @@ while ( <$server> ) {
     push @{$result{$msg} ||= []}, $date;
 }
 
-foreach ( values %result ) {
+foreach my $test ( sort keys %result ) {
+    $_ = $result{$test};
     for ( @$_ ) {
         my ($Y, $m, $d, $H, $M, $S) = /(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)/;
         $Y -= 1900;
         $m--;
         $_ = timelocal $S, $M, $H, $d, $m, $Y;
     }
+    @$_ = sort @$_;
     my $x = shift @$_;
     while ( @$_ ) {
         my $y = shift @$_;
         my $diff = abs($x - $y);
-        ok($diff == 4 || $diff == 5);
+        ok($diff == 4 || $diff == 5, "$test: comparing $x and $y");
         $x = $y;
     }
 }

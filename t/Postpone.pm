@@ -12,7 +12,9 @@ sub __test3 { DEBUG 'Dummy::__test3'; my $self = shift; $self->result("Running t
 sub run {
     my $self = shift;
     $self->postpone('__test1');
+    $self->synchro('test1');
     $self->postpone('__test2');
+    $self->synchro('test2');
     $self->postpone('__test3');
 }
 

@@ -12,7 +12,7 @@ use IO::Select;
 $/ = CRLF;
 
 my $n_workers = 3;
-plan tests => 6 * $n_workers;
+plan tests => 6 * $n_workers + 1;
 my $port = 8147;
 
 my %expected;
@@ -26,17 +26,27 @@ for ( 1 .. $n_workers ) {
 	my $c = new Distributed::Process::Client
 	    -worker_class => 'Dummy',
 	    -host => 'localhost',
-	    -port => 8147,
+	    -port => $port,
             -id   => "wrk$_",
 	;
 	$c->run();
 	exit 0;
     }
     else {
-	$expected{"wrk$_:__test1 RESULT_1"} = 1;
-        $expected{"wrk$_:__test2 RESULT_2 RESULT_1"} = 1;
-        $expected{"wrk$_:__test2 RESULT_2 RESULT_2"} = 1;
-        $expected{"wrk$_:__test3 RESULT_" . ($_+2)} = 1;
+        no warnings 'uninitialized';
+        my $o = 2 * ($_ - 1) + 1;
+	$expected{"__test1 RESULT_" . $o++} = 1;
+	$expected{"__test2 RESULT_" . $o++ . " RESULT_1"} = 1;
+
+        $o = 2 * $n_workers + $_;
+	$expected{"__test3 RESULT_" . $o} = 1;
+
+        $o = 3 * $n_workers + 2 * ($_ - 1) + 1;
+	$expected{"__test1 RESULT_" . $o++} = 1;
+	$expected{"__test2 RESULT_" . $o++ . " RESULT_2"} = 1;
+
+        $o = 3 * $n_workers + 2 * $n_workers + $_;
+	$expected{"__test3 RESULT_" . $o} = 1;
     }
 }
 
@@ -55,7 +65,7 @@ if ( ! $server_pid ) {
         -in_handle => $parent,
         -out_handle => $parent,
     ;
-    my $s = new Distributed::Process::Server master => $m, port => 8147;
+    my $s = new Distributed::Process::Server master => $m, port => $port;
     $s->listen();
     exit 0;
 }
@@ -70,7 +80,7 @@ while ( <$server> ) {
     /ok/ and last;
     /\t/ or next;
     my ($id, $date, $msg) = split /\t/;
-    ok(exists $expected{"$id:$msg"});
+    ok($expected{$msg}--, "received $msg from $id");
 }
 
 print $server "/reset" . CRLF;
@@ -81,5 +91,7 @@ while ( <$server> ) {
     /ok/ and print $server "/quit" . CRLF;
     /\t/ or next;
     my ($id, $date, $msg) = split /\t/;
-    ok(exists $expected{"$id:$msg"});
+    ok($expected{$msg}--, "received $msg from $id");
 }
+my $left = grep $_, values %expected;
+ok($left == 0, "all expected values were received");

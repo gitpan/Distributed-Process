@@ -10,11 +10,11 @@ machines.
 
 =head1 VERSION
 
-Version 0.06
+Version 0.10
 
 =cut
 
-our $VERSION = '0.06';
+our $VERSION = '0.10';
 
 =head1 SYNOPSIS
 
@@ -104,10 +104,10 @@ all connected C<D::P::RemoteWorker> objects, effectively resulting in
 broadcasting the command.
 
 When the C<D::P::Master> receives the C</run> command (on standard input), it
-invokes the run() method of its C<D::P::MasterWorker> object. This method is
-the same as the run() method of C<MyWorker>, except that any call to a
-__method() will result in a command being broadcasted to the connected
-C<D::P::RemoteWorker> objects.
+invokes the run() method of its C<D::P::MasterWorker> object, which in turn
+invokes it on each of the C<D::P::RemoteWorker> objects. Whenever they invoke a
+method that starts with a double underscore, they send a message to their
+client counterpart to run the method on their behalf.
 
 After the run() is over, the C<D::P::MasterWorker> broadcasts the
 C</get_result> command and gathers the results from all C<D::P::Worker>
@@ -241,6 +241,23 @@ sub import {
     @_ = ($package, keys %arg);
     goto &Exporter::import;
 }
+
+=back
+
+=head1 TODO
+
+=over 4
+
+=item *
+
+Arrange to have the run() method executed by the C<D::P::LocalWorker> instead
+of the C<D::P::RemoteWorker>, in order to shift most of the load from the
+server to the clients.
+
+=item *
+
+run() should accept arguments, so that the Master can call each client with
+different arguments.
 
 =back
 

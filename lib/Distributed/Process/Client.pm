@@ -50,7 +50,13 @@ command string is splitted on whitespace.
 
 =item B</run> I<NAME>, I<LIST>
 
-Calls the method called I<NAME> with I<LIST> as arguments.
+Calls the worker's method called I<NAME> with I<LIST> as arguments.
+
+=item B</run_with_return> I<NAME>, I<LIST>
+
+Same as C</run> but sends the return values from method I<NAME> back to the
+server. The list of return values are sent one by line, preceded by
+C</begin_return> and followed by C</end_return>.
 
 =item B</reset>
 
@@ -79,7 +85,7 @@ C</begin_results> and followed by the word C<ok>. Each result line gets
 prefixed with the client's id() and a tab character (0x09).
 
 The worker itself returns its result line prefixed with a timestamp. An example
-of output could thus be:
+of output could thus be (for a method invoked under C</time>):
 
     /begin_results
     client1	20050316-152519	Running method __test1
@@ -94,6 +100,7 @@ sub command_handlers {
     my $self = shift;
     return (
 	$self->SUPER::command_handlers(),
+	[ qr|^/run_with_return|, sub { shift; my $cmd = shift; return('/begin_return', $self->worker()->$cmd(@_), '/end_return') } ],
 	[ qr|^/run|, sub { shift; my $cmd = shift; $self->worker()->$cmd(@_) } ],
 	[ qr|^/reset|, sub { $self->worker()->reset_result() } ],
 	[ qr|^/time|, sub { shift; $self->worker()->time(@_) } ],

@@ -7,11 +7,15 @@ use Distributed::Process;
 import Distributed::Process;
 
 use threads;
+use threads::shared qw/ cond_wait cond_broadcast /;
 use Thread::Queue;
 use Thread::Semaphore;
 
 my $SELF;
 my $SYNCHRO_SEMAPHORE = new Thread::Semaphore 0;
+my $SYNCHRO_SEMAPHORE_2 = new Thread::Semaphore 0;
+my $SYNCHRO_TOKEN : shared = '';
+my $SYNCHRO_COUNTER : shared = 0;
 my $RESULT_SEMAPHORE = new Thread::Semaphore 0;
 my $RESULT_QUEUE = new Thread::Queue;
 
@@ -68,15 +72,9 @@ sub synchro {
     my $self = shift;
     my $token = shift;
 
-    INFO "requesting synchro for '$token'";
-
-    foreach ( $self->master()->workers() ) {
-	$_->synchro($token);
-    }
-    my $down = $self->master()->workers();
-    DEBUG "downing semaphore by $down";
-    $SYNCHRO_SEMAPHORE->down($down);
-    DEBUG "synchro for '$token' done";
+    lock $SYNCHRO_COUNTER;
+    $SYNCHRO_COUNTER ||= $self->master()->workers();
+    cond_wait $SYNCHRO_COUNTER until $SYNCHRO_COUNTER == 0;
 }
 
 sub synchro_received {
@@ -84,28 +82,19 @@ sub synchro_received {
     my $self = shift;
     my ($worker, $token) = @_;
     DEBUG "received synchro signal for '$token'";
-    DEBUG 'upping semaphore by 1';
-    $SYNCHRO_SEMAPHORE->up();
+    lock $SYNCHRO_COUNTER;
+    $SYNCHRO_COUNTER --;
+    cond_broadcast $SYNCHRO_COUNTER if $SYNCHRO_COUNTER == 0;
 }
 
 sub run {
 
     my $self = shift;
-    $self->synchro('ready');
-    $self->SUPER::run(@_);
-    $self->synchro('finished');
-}
-
-sub postpone {
-
-    my $self = shift;
-    my $method = shift;
-    my $period = 1 / ($self->frequency() || 1);
-
-    foreach ( $self->master()->workers() ) {
-	select undef, undef, undef, $period;
-	$_->$method(@_);
+    my @tid;
+    foreach my $w ( $self->master()->workers() ) {
+	push @tid, async { $w->run(@_); 1; };
     }
+    $_->join() foreach @tid;
 }
 
 sub frequency {

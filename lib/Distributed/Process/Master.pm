@@ -183,6 +183,24 @@ sub workers {
     wantarray ? sort { $a->id() cmp $b->id() } @{$self->{_workers}} : scalar @{$self->{_workers}};
 }
 
+=item B<worker_index> I<WORKER>
+
+Returns the index (starting with 0) of the given I<WORKER> within the internal
+list of worker objects, or C<undef> if the I<WORKER> is not known.
+
+=cut
+
+sub worker_index {
+
+    my $self = shift;
+
+    my $worker = shift;
+    for ( my $i = 0 ; $i < $self->n_workers() ; $i++ ) {
+	return $i if $worker eq $self->{_workers}[$i];
+    }
+    return;
+}
+
 =item B<worker_ready> I<WORKER>
 
 Workers call this method from their master's when they have received the
@@ -217,20 +235,6 @@ sub master_worker {
     DEBUG 'creating master worker instance';
     croak "master_worker() must be called after worker_class is set" unless $self->worker_class();
     @Distributed::Process::MasterWorker::ISA = ($self->worker_class());
-    foreach my $package ( $self->worker_class(), $self->worker_class()->ancestors() ) {
-	$package .= '::';
-	no strict 'refs';
-	foreach my $name ( keys %$package ) {
-	    local *symbol = eval "*$package$name";
-	    if ( $name =~ /^__/ && defined &symbol ) {
-		DEBUG "creating function $name in Distributed::Process::MasterWorker";
-		*{"Distributed::Process::MasterWorker::" . $name} = sub {
-		    my $s = shift;
-		    $_->$name(@_) foreach $s->master()->workers();
-		};
-	    }
-	}
-    }
     $self->{_master_worker} = Distributed::Process::MasterWorker::->new(-master => $self, $self->worker_args());
     return $self->{_master_worker};
 }
