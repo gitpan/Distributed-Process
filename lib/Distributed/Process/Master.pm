@@ -57,7 +57,10 @@ sub new {
 
 =head2 Commands
 
-A C<D::P::Master> object will react on the following commands received on its in_handle():
+A C<D::P::Master> object will react on the following commands received on its
+in_handle(). They are implemented as callbacks returned by the
+command_handlers() method (see L<Distributed::Process::Interface>). The
+callbacks are given the full command, i.e., one string.
 
 =over 4
 
@@ -188,17 +191,19 @@ sub master_worker {
     DEBUG 'creating master worker instance';
     croak "master_worker() must be called after worker_class is set" unless $self->worker_class();
     @Distributed::Process::MasterWorker::ISA = ($self->worker_class());
-    my $package = $self->worker_class() . '::';
-    no strict 'refs';
-    foreach my $name ( keys %$package ) {
-	local *symbol = eval "*$package$name";
-	if ( $name =~ /^__/ && defined &symbol ) {
-	    DEBUG "creating function $name in Distributed::Process::MasterWorker";
-	    *{"Distributed::Process::MasterWorker::" . $name} = sub {
-		my $s = shift;
-		DEBUG $name;
-		$_->$name(@_) foreach $s->master()->workers();
-	    };
+    foreach my $package ( $self->worker_class(), $self->worker_class()->ancestors() ) {
+	$package .= '::';
+	no strict 'refs';
+	foreach my $name ( keys %$package ) {
+	    local *symbol = eval "*$package$name";
+	    if ( $name =~ /^__/ && defined &symbol ) {
+		DEBUG "creating function $name in Distributed::Process::MasterWorker";
+		*{"Distributed::Process::MasterWorker::" . $name} = sub {
+		    my $s = shift;
+		    DEBUG $name;
+		    $_->$name(@_) foreach $s->master()->workers();
+		};
+	    }
 	}
     }
     $self->{_master_worker} = Distributed::Process::MasterWorker::->new(-master => $self, $self->worker_args());

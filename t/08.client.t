@@ -13,8 +13,8 @@ my $c = new Distributed::Process::Client
 ;
 isa_ok($c, 'Distributed::Process::Client');
 isa_ok($c->worker(), 'Dummy');
-is(($c->handle_line(qw{ /run __test1 }))[0], undef);
-my @expected = ( '/begin_results', 'Running test1', 'ok' ); 
+is(($c->handle_line(qw{ /run __test1 testing}))[0], undef);
+my @expected = ( '/begin_results', '__test1 TESTING', 'ok' ); 
 foreach ( $c->handle_line(qw{ /get_results }) ) {
     my $e = shift @expected;
     like($_, qr/\E$e$/);

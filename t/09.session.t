@@ -16,6 +16,7 @@ my $port = 8147;
 
 my @pid;
 my %expected;
+my $c = 3;
 for ( 1 .. $n_workers ) {
     my $pid = fork;
 
@@ -33,7 +34,10 @@ for ( 1 .. $n_workers ) {
     }
     else {
 	push @pid, $pid;
-	$expected{"$pid:Running test$_"} = 1 for 1 .. 3;
+	$expected{"$pid:__test1 RESULT_1"} = 1;
+        $expected{"$pid:__test2 RESULT_2 RESULT_1"} = 1;
+        $expected{"$pid:__test2 RESULT_2 RESULT_2"} = 1;
+        $expected{"$pid:__test3 RESULT_" . $c++} = 1;
     }
 }
 

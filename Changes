@@ -1,5 +1,11 @@
 Revision history for Distributed-Process
 
+0.05    Thu Mar 17 09:26:54 CET 2005
+        Passing a coderef as argument to a __method now works also when calling
+        it under time().
+        The __methods are now redefined in the worker_class and also in its
+        ancestor classes if any.
+
 0.04    Tue Mar 15 10:48:48 CET 2005
         Added /reset command to flush the results between two run().
         Passing a coderef as argument to a __method called within run() will

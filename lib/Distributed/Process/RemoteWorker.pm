@@ -1,6 +1,5 @@
 package Distributed::Process::RemoteWorker;
 
-use warnings;
 use strict;
 
 use Distributed::Process;
@@ -42,29 +41,44 @@ sub synchro_received {
     $self->master()->synchro_received($self, $token);
 }
 
+sub _run_code_in_args {
+
+    my $self = shift;
+    my @arg = ();
+    foreach ( @_ ) {
+	if ( ref($_) eq 'CODE' ) {
+	    push @arg, $_->($self);
+	}
+	else {
+	    push @arg, $_;
+	}
+    }
+    @arg;
+}
+
 sub go_remote {
 
     my $self = shift;
     no strict 'refs';
 
-    my $package = (ref($self) || $self) . '::';
-    DEBUG "package $package is going remote";
-    foreach my $name ( keys %$package ) {
-	local *symbol = eval "*$package$name";
-        no warnings 'redefine';
-	if ( $name =~ /^__/ && defined &symbol ) {
-	    *symbol = sub {
-		my $s = shift;
-		local $" = " ";
-		if ( ref($_[0]) eq 'CODE' ) {
-		    my $cref = shift;
-		    unshift @_, $cref->($self);
-		}
-		$s->send("/run $name @_");
-	    };
-	}
-	if ( $name =~ /::$/ ) {
-	    # TODO: handle subclasses ?
+    foreach my $package ( ref($self) || $self, $self->ancestors() ) {
+	next if $package =~ /Distributed::Process/ || $package eq 'Exporter';
+	DEBUG "package $package is going remote";
+	$package .= '::';
+	foreach my $name ( keys %$package ) {
+	    local *symbol = eval "*$package$name";
+	    no warnings 'redefine';
+	    if ( $name =~ /^__/ && defined &symbol ) {
+		*symbol = sub {
+		    my $s = shift;
+		    local $" = " ";
+		    my @arg = $s->_run_code_in_args(@_);
+		    $s->send("/run $name @arg");
+		};
+	    }
+	    if ( $name =~ /::$/ ) {
+		# TODO: handle subclasses ?
+	    }
 	}
     }
 }
@@ -124,7 +138,8 @@ sub time {
 
     my $self = shift;
     local $" = ' ';
-    $self->send("/time @_");
+    my @arg = $self->_run_code_in_args(@_);
+    $self->send("/time @arg");
 }
 
 foreach my $method ( qw/ master / ) {
