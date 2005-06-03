@@ -6,7 +6,7 @@ if ( $@ ) {
     plan skip_all => "Test::Pod::Coverage 1.04 required for testing POD coverage";
 }
 else {
-    plan tests => 10;
+    plan tests => 9;
 }
 pod_coverage_ok('Distributed::Process');
 $trustme = { trustme => [ qr/^new$/ ] };
@@ -22,12 +22,11 @@ pod_coverage_ok('Distributed::Process::Client', $trustme);
 # Subclasses of P::D::BaseWorker
 $trustme = { trustme => [ qr/^(?:new|synchro|run|postpone|time|result)$/ ] };
 pod_coverage_ok('Distributed::Process::LocalWorker', $trustme);
-{
-local $TODO = 'Not documented yet';
-pod_coverage_ok('Distributed::Process::MasterWorker', $trustme);
 pod_coverage_ok('Distributed::Process::Worker', $trustme);
 
 # P::D::RemoteWorker is also a P::D::Interface
-push @{$trustme->{trustme}}, qr/^(?:command_handlers|(?:in_|out_)?handle)$/;
-pod_coverage_ok('Distributed::Process::RemoteWorker', $trustme);
+TODO:{
+    local $TODO = "Distributed::Process::RemoteWorker not documented yet";
+    push @{$trustme->{trustme}}, qr/^(?:command_handlers|(?:in_|out_)?handle)$/;
+    pod_coverage_ok('Distributed::Process::RemoteWorker', $trustme);
 }

@@ -5,8 +5,7 @@ use strict;
 
 =head1 NAME
 
-Distributed::Process::Master - a class to conduct the chorus of D::P::Workers,
-under a D::P::Server.
+Distributed::Process::Master - a class to conduct the chorus of D::P::Workers, under a D::P::Server.
 
 =head1 SYNOPSIS
 
@@ -31,19 +30,20 @@ under a D::P::Server.
 A C<D::P::Server> manages a number of C<D::P::Interface> objects, one of which
 is a C<Distributed::Process::Master>. The role of the Master is to handle
 requests from the user, coming in on its in_handle() (usually, the standard
-input), and act as an interface between the C<D::P::MasterWorker> and the
+input), and act as an interface between the user and the
 C<D::P::Worker> objects.
 
 =cut
-
-use threads;
 
 use Carp;
 use Distributed::Process;
 use Distributed::Process::Worker;
 use Distributed::Process::RemoteWorker;
-use Distributed::Process::MasterWorker;
 
+use threads;
+use threads::shared;
+use Thread::Semaphore;
+use Thread::Queue;
 use Distributed::Process::Interface;
 our @ISA = qw/ Distributed::Process::Interface /;
 @Distributed::Process::Worker::ISA = qw/ Distributed::Process::RemoteWorker /;
@@ -53,14 +53,14 @@ sub new {
 
     my $self = shift;
     $SELF ||= $self->SUPER::new(@_);
+    $SELF->_ignore_queue();
+    $SELF;
 }
 
 =head2 Commands
 
 A C<D::P::Master> object will react on the following commands received on its
-in_handle(). They are implemented as callbacks returned by the
-command_handlers() method (see L<Distributed::Process::Interface>). The
-callbacks are given the full command, i.e., one string.
+in_handle().
 
 =over 4
 
@@ -70,7 +70,7 @@ Invokes the run() method (see below).
 
 =item B</reset>
 
-Invokes the reset_result() method on the MasterWorker object.
+Invokes the reset_result() method on all the Worker objects.
 
 =item B</freq> I<NUMBER>
 
@@ -84,18 +84,6 @@ server and the clients.
 =back
 
 =cut
-
-sub command_handlers {
-
-    my $self = shift;
-    return (
-	$self->SUPER::command_handlers(),
-	[ qr|^/run|,  sub { $self->run() } ],
-	[ qr|^/reset|, sub { $self->master_worker()->reset_result() } ],
-	[ qr|^/freq|, sub { local $_ = (split ' ', $_[0])[1]; tr/0-9.//cd; $self->frequency($_) } ],
-	[ qr|^/quit|, sub { $self->server()->quit() } ],
-    );
-}
 
 =head2 Methods
 
@@ -144,31 +132,48 @@ sub add_worker {
     while ( my ($meth, $value) = each %attr ) {
 	$worker->$meth($value);
     }
+    my $in_queue = new Thread::Queue;
+    my $out_queue = new Thread::Queue;
+    $worker->in_queue($out_queue);
+    $worker->out_queue($in_queue);
+    $worker->get_id();
     push @{$self->{_workers}}, $worker;
     INFO 'new worker arrived';
     $self->send('new worker arrived');
     return $worker;
 }
 
-=item B<remove_worker> I<WORKER>
+sub _broadcast {
 
-Removes a I<WORKER> from the list of known C<P::D::Worker> objects. Returns the
-worker object, or C<undef> if the worker was not part of the known workers.
+    my $self = shift;
 
-=cut
-
-sub remove_worker {
-
-    my ($self, $worker) = @_;
-    my $i;
-    for ( $i = 0; $i < @{$self->{_workers}}; $i++ ) {
-	last if $self->{_workers}[$i] eq $worker;
+    foreach ( @{$self->{_workers}} ) {
+	$_->in_queue()->enqueue(@_);
     }
-    return if $i >= @{$self->{_workers}};
+}
 
-    my $removed = splice @{$self->{_workers}}, $i, 1;
-    DEBUG 'worker departed, ' . ($self->workers() || 'none') . 'left';
-    return $removed;
+sub _queue_is_pending {
+
+    my $self = shift;
+
+    foreach ( @{$self->{_workers}} ) {
+	return 1 if $_->out_queue()->pending();
+    }
+    return;
+}
+
+sub _read_queues {
+
+    my $self = shift;
+
+    foreach ( @{$self->{_workers}} ) {
+	my $q = $_->out_queue();
+	DEBUG "looking in queue from $_";
+	if ( $q->pending() ) {
+	    return ($_, $q->dequeue());
+	}
+    }
+    return;
 }
 
 =item B<workers>
@@ -183,84 +188,90 @@ sub workers {
     wantarray ? sort { $a->id() cmp $b->id() } @{$self->{_workers}} : scalar @{$self->{_workers}};
 }
 
-=item B<worker_index> I<WORKER>
+=item B<has_enough_workers>
 
-Returns the index (starting with 0) of the given I<WORKER> within the internal
-list of worker objects, or C<undef> if the I<WORKER> is not known.
+Returns true when the number of connected workers is enough (i.e., greater than
+or equal to n_workers()).
 
 =cut
 
-sub worker_index {
+sub has_enough_workers {
 
     my $self = shift;
 
-    my $worker = shift;
-    for ( my $i = 0 ; $i < $self->n_workers() ; $i++ ) {
-	return $i if $worker eq $self->{_workers}[$i];
+    $self->n_workers() <= $self->workers();
+}
+
+=item B<reset_result>
+
+Broadcast a message to all workers to flush their results list.
+
+=cut
+
+sub reset_result {
+
+    my $self = shift;
+    $self->_broadcast('/reset');
+}
+
+=item B<synchro> I<TOKEN>
+
+This method is invoked when a worker receives a C</synchro> command from its
+connected client. It increments the counter associated with the I<TOKEN>, and
+when this counter reaches the number of connected client (which means that all
+the clients have reached the synchronisation point), the master lets the
+workers send another C</synchro> message in reply to their clients, which can
+go on with the rest of their task.
+
+=cut
+
+sub synchro {
+
+    my $self = shift;
+    my $token = shift;
+
+    $self->{_synchro_counter}{$token} ||= 0;
+    DEBUG "Synchro counter for $token is " . ($self->{_synchro_counter}{$token}+1);
+    if ( ++$self->{_synchro_counter}{$token} == $self->n_workers() ) {
+	$self->{_synchro_counter}{$token} = 0;
+	sleep 1;
+	$_->in_queue()->enqueue("/synchro $token") foreach $self->workers();
     }
-    return;
 }
 
-=item B<worker_ready> I<WORKER>
+=item B<delay> I<TOKEN>
 
-Workers call this method from their master's when they have received the
-C</worker> command. The master takes this opportunity to check whether all the
-expected workers are connected and whether they are all initialized.
+This works much the same way as synchro().
+This method is invoked when a worker receives a C</delay> command from its
+connected client. It increments the counter associated with the I<TOKEN>, and
+when this counter reaches the number of connected client (which means that all
+the clients have reached the synchronisation point), the master lets the
+workers send another C</delay> message in reply to their clients. However,
+instead of sending these messages all at once, the master waits for some time
+to elapse between each client call. This time is configurable with the C</freq>
+command.
 
 =cut
 
-sub worker_ready {
+sub delay {
 
     my $self = shift;
-    $self->send('ready to run') if $self->_is_ready_to_run();
-    return;
-}
+    my $token = shift;
 
-=item B<master_worker>
+    $self->{_synchro_counter}{$token} ||= 0;
 
-Returns the C<P::D::MasterWorker> object. 
-
-The first time this method gets called, the C<P::D::MasterWorker> class is
-built as a subclass of the worker_class() and all its double-underscore methods
-are overloaded, so that invoking such a __method() on the MasterWorker will
-result in invoking the same method on all the known workers().
-
-=cut
-
-sub master_worker {
-
-    my $self = shift;
-    return $self->{_master_worker} if $self->{_master_worker};
-
-    DEBUG 'creating master worker instance';
-    croak "master_worker() must be called after worker_class is set" unless $self->worker_class();
-    @Distributed::Process::MasterWorker::ISA = ($self->worker_class());
-    $self->{_master_worker} = Distributed::Process::MasterWorker::->new(-master => $self, $self->worker_args());
-    return $self->{_master_worker};
-}
-
-=item B<synchro_received> I<LIST>
-
-=item B<result_received> I<LIST>
-
-These methods simply invoke the methods by the same name on the
-C<D::P::MasterWorker>. They are called by a C<D::P::Worker> that receives some
-signal and must notify the MasterWorker, but can only do so through the Master
-itself.
-
-=cut
-
-sub synchro_received {
-
-    my $self = shift;
-    $self->master_worker()->synchro_received(@_);
-}
-
-sub result_received {
-
-    my $self = shift;
-    DEBUG "received results from @_";
-    $self->master_worker()->result_received(@_);
+    if ( ++$self->{_synchro_counter}{$token} == $self->n_workers() ) {
+	my $delay = 1 / ($self->frequency() || 1);
+	$self->{_synchro_counter}{$token} = 0;
+	my $thr = async {
+	    foreach ( $self->workers() ) {
+		DEBUG "sleeping for $delay seconds";
+		select undef, undef, undef, $delay;
+		$_->in_queue()->enqueue("/delay $token");
+	    }
+	};
+	$thr->detach();
+    }
 }
 
 =item B<result>
@@ -273,34 +284,148 @@ overload this method to filter the results before they are sent to the user.
 sub result {
 
     my $self = shift;
-    $self->master_worker()->result();
+
+    INFO 'gathering results';
+    map $_->result(), $self->workers();
+}
+
+=item B<run_done>
+
+This method is called when a worker receives the C</run_done> command from its
+connected client. It increments a counter, and when all clients have sent this
+command, run_done() calls the result() method to gather the results from all
+the clients and send them to the out_handle().
+
+=cut
+
+sub run_done {
+
+    my $self = shift;
+    return if ++$self->{_run_done} < $self->workers();
+    DEBUG 'fetching the results';
+    my @result = $self->result();
+    DEBUG 'sending the results';
+    $self->send(@result, 'ok');
 }
 
 =item B<run>
 
-Spawns a thread to run the work session. The thread will invoke the run()
-method on the master_worker() object, get its result(), and print the results
-to the out_handle().
+Broadcast a message to the workers to let them send a C</run> command to their
+connected client.
 
 =cut
 
 sub run {
 
     my $self = shift;
-    return if @{$self->{_workers}} < $self->n_workers();
-    my $master_worker = $self->master_worker();
-    DEBUG 'spawning a thread';
-    my $thread = async {
-	DEBUG 'Spawning the workers';
-	$master_worker->run();
-	DEBUG 'fetching the results';
-	my @result = $self->result();
-	DEBUG 'sending the results';
-	$self->send(@result, 'ok');
-	DEBUG 'Work done';
-    };
-    $thread->detach();
-    DEBUG 'thread spawned';
+    return unless $self->_is_ready_to_run();
+    DEBUG 'Giving the go to the workers';
+    $self->{_run_done} = 0;
+    $self->_broadcast('/run');
+
+}
+
+sub _ignore_queue { shift->{_ignore_queue} = 1 }
+sub _heed_queue { shift->{_ignore_queue} = 0 }
+sub _is_ignoring_queue { shift->{_ignore_queue} }
+sub _is_heeding_queue { !(shift->{_ignore_queue}) }
+
+=item B<available_for_reading>
+
+This method is called by the wait_for_pattern() method in
+C<Distributed::Process::Interface> to check whether it should return or go on
+waiting for lines to read on the in_handle(). available_for_reading() returns 1
+when something is available on in_handle() (i.e., the user has typed a command
+on the terminal), or 0 if a worker is sending a message. It blocks until one of
+the two happens.
+
+wait_for_pattern(), in turn will read the in_handle() if
+available_for_reading() yielded 1, or return undef if it yielded 0.
+
+=cut
+
+sub available_for_reading {
+
+    my $self = shift;
+
+    return 1 if $self->_is_ignoring_queue();
+    my $s = new IO::Select $self->in_handle();
+    DEBUG "Waiting for a message";
+    while ( 1 ) {
+	DEBUG("Something ready to read on the network"), return 1 if $s->can_read($self->timeout() || .1);
+	DEBUG("Incoming message from a worker"), return 0 if $self->_queue_is_pending();
+    }
+}
+
+=item B<listen>
+
+This method is called by the C<Distributed::Process::Server> when enough
+clients are connected. It listens for commands typed by the user on the
+terminal and, at the same time, to messages sent by the workers, and take
+appropriate actions based on the command received.
+
+=cut
+
+sub listen {
+
+    my $self = shift;
+
+    my $h = $self->in_handle();
+
+    $self->send('ready to run');
+
+    $self->_heed_queue();
+    while ( 1 ) {
+	my @res = $self->wait_for_pattern(qr{^/\S+});
+
+	if ( @res ) {
+	    my ($command, @arg) = split /\s+/, $res[-1];
+	    DEBUG "Received command $command";
+	    for ( $command ) {
+		/\brun/i and do {
+		    $self->run();
+		    last;
+		};
+		/\breset/i and do {
+		    $self->reset_result();
+		    last;
+		};
+		/\bfreq/i and do {
+		    if ( @arg ) {
+			$self->frequency($arg[0]);
+		    }
+		    else {
+			$self->send($self->frequency());
+		    }
+		    last;
+		};
+		/\bquit/ and do {
+		    $self->_broadcast('/quit');
+		    sleep 1;
+		    exit 0;
+		};
+	    }
+	}
+	else {
+	    my ($worker, $msg) = $self->_read_queues();
+	    DEBUG "Received message $msg";
+	    ($msg, my @arg) = split /\s+/, $msg;
+	    for ( $msg ) {
+		/\bsynchro/ and do {
+		    $self->synchro($arg[0]);
+		    last;
+		};
+		/\bdelay/ and do {
+		    $self->delay($arg[0]);
+		    last;
+		};
+		/\brun_done/ and do {
+		    $self->run_done();
+		    last;
+		};
+	    }
+	}
+    }
 }
 
 =item B<worker_class> C<NAME>
@@ -385,11 +510,24 @@ second, or 1 call every 0.25 second.
 
 See L<Distributed::Process::Worker> for details.
 
+=item B<id>
+
+The unique ID for the Master, as a D::P::Interface is "C<master>".
+
+=item B<timeout>
+
+How often available_for_reading() will check for messages from the workers. The
+rest of the time, it will wait for messages on in_handle(). The default is 0.1
+seconds, meaning that available_for_reading() will check for messages from the
+workers ten times per second.
+
 =back
 
 =cut
 
-foreach my $method ( qw/ n_workers frequency / ) {
+sub id { 'master' }
+
+foreach my $method ( qw/ n_workers frequency timeout / ) {
 
     no strict 'refs';
     *$method = sub {

@@ -1,6 +1,5 @@
 package Distributed::Process;
 
-use warnings;
 use strict;
 
 =head1 NAME
@@ -10,11 +9,11 @@ machines.
 
 =head1 VERSION
 
-Version 0.10
+Version 0.20
 
 =cut
 
-our $VERSION = '0.10';
+our $VERSION = '0.20';
 
 =head1 SYNOPSIS
 
@@ -25,21 +24,17 @@ tasks to be run remotely in its run() method.
     use Distributed::Process;
     use Distributed::Process::Worker;
 
-    sub __task {
-	my $self = shift;
-	# do something
-	$self->result('report on what happened');
-    }
-
     sub run {
 	my $self = shift;
-	$self->__task();
+
+	# do interesting stuff
+	...
+
+	# report about what happened
+	$self->result("logs the results");
     }
 
-All methods whose names start with a double underscore will be run on the
-remote machines (the clients).
-
-Write a small server that uses this C<MyWorker> class.
+Write a small server to pilot the workers:
 
     # Server
     use Distributed::Process;
@@ -47,14 +42,16 @@ Write a small server that uses this C<MyWorker> class.
     use Distributed::Process::Master;
     use MyWorker;
 
-    $master = new Distributed::Process::Master -worker_class => 'MyWorker',
+    $master = new Distributed::Process::Master 
 	-in_handle => \*STDIN, -out_handle => \*STDOUT,
+	-worker_class => 'MyWorker',
 	-n_workers => 2;
     $server = new Distributed::Process::Server -port => 8147, -master => $master;
 
     $server->listen();
 
-Write a small client as well and install it on all the client machines:
+Write a small client as well that uses the custom worker class and install it
+on all the client machines:
 
     # Client
     use Distributed::Process;
@@ -74,54 +71,62 @@ several computers, while centrally keeping control from another machine.
 
 The tasks to run are implemented in a "worker" class, that derives from
 C<D::P::Worker>; let's call it C<MyWorker>. The subclass must overload the
-run() method, but not to perform the tasks directly, only to give the
-"schedule" of the sub-tasks to run. The sub-tasks themselves will be
-implemented in other methods, whose names start with a double underscore,
-and called from within the run() method.
+run() method that will be invoked from the server.
 
 =head3 Server Side
 
 On the server side, a C<D::P::Server> object will handle the network
-connections, i.e. sockets or handles. Each handle is associated with a
+connections, i.e. sockets. Each handle is associated with a
 C<D::P::Interface> object. This object can be either be a C<D::P::Master>, or a
 C<D::P::RemoteWorker>.
 
 Instead of being bound to a network socket, the C<D::P::Master> object is
 typically bound to the standard input and output, and can thus receive orders
 from the user and give feedback on the terminal. It maintains a list of
-C<D::P::RemoteWorker> objects, one for each network connection, and it also
-maintains one C<D::P::MasterWorker>.
+C<D::P::RemoteWorker> objects, one for each network connection.
 
-The C<D::P::RemoteWorker> objects are in fact instances of the C<MyWorker>
-class, but with its inheritance changed so that it now derives from
-C<D::P::RemoteWorker>.  Basically, invoking one of their methods that start
-with a double underscore will in fact send a command on the network socket,
-instead of running the real method.
-
-The C<D::P::MasterWorker> is a subclass of the custom C<MyWorker>. It overrides
-its double-underscore methods so that they call the method by the same name on
-all connected C<D::P::RemoteWorker> objects, effectively resulting in
-broadcasting the command.
+The C<D::P::RemoteWorker> objects implement the communication between the
+server and the clients. Its inheritance is changed at run-time, so that it is a
+subclass of the MyWorker class, and thus benefits from all the methods
+implemented in the worker class.
 
 When the C<D::P::Master> receives the C</run> command (on standard input), it
-invokes the run() method of its C<D::P::MasterWorker> object, which in turn
-invokes it on each of the C<D::P::RemoteWorker> objects. Whenever they invoke a
-method that starts with a double underscore, they send a message to their
-client counterpart to run the method on their behalf.
+invokes the run() method on each of the C<D::P::RemoteWorker> objects, which in
+turn will send a C</run> command to their connected client.
 
-After the run() is over, the C<D::P::MasterWorker> broadcasts the
-C</get_result> command and gathers the results from all C<D::P::Worker>
-objects. And the C<D::P::Master> prints out the results.
+After the run() is over, the C<D::P::Master> broadcasts the
+C</get_result> command and gathers the results from all C<D::P::RemoteWorker>
+objects, and prints out the results.
 
 =head3 Client Side
 
 On the client side, a C<D::P::Client> object manages to connection to the
 server and instanciates the C<MyWorker> class, derived from C<D::P::Worker>.
 
-When the client receives a command from the server, it executes it, i.e., it
-invokes the requested method on its C<MyWorker> object, and keeps the
-results in memory. The results will be sent later back to the server, when
-receiving the C</get_result> command.
+When the client receives the C</run> command from the server, it invokes the
+run() method of the C<MyWorker> class. This method can in turn invoke methods
+from C<D::P::LocalWorker> (which it derives from) to talk back to the server:
+
+=over 4
+
+=item B<synchro()>: enables all the workers to wait for all the others to reach
+the same point in the execution of run() before proceeding.
+
+=item B<delay()>: just like synchro(), but after the synchronization point is
+reached, each worker will go on a short time after the previous worker. This
+prevents all the workers to run a task exactly at once, but rather spreads the
+work on a longer period of time.
+
+=item B<run_on_server()>: let a method be run on the server, instead of the
+client.
+
+=item B<time()>: measures the time another method takes to complete and reports
+it.
+
+=item B<result()>: records a string as a "result". It will be sent back to the
+server after the run is complete.
+
+=back
 
 =cut
 
@@ -218,6 +223,15 @@ e.g.:
     <WRN>3147:Package::function(1): message
     <INF>3147:Package::function(1): message
 
+If the global variable $ID is declared in the main program, it will be used instead of the Process ID:
+
+    our $ID = 'server';
+
+    <DBG>server:Package::function(1): message
+    <ERR>server:Package::function(1): message
+    <WRN>server:Package::function(1): message
+    <INF>server:Package::function(1): message
+
 =cut
 
 sub import {
@@ -232,8 +246,9 @@ sub import {
 	? sub {
 	    my $sub = (caller(1))[3];
 	    my $tid = threads->self()->tid();
+	    my $pid = $main::ID || $$;
 	    $CAN_PRINT->down();
-	    print STDERR "<$type>$$: $sub($tid): @_\n";
+	    print STDERR "<$type>$pid: $sub($tid): @_\n";
 	    $CAN_PRINT->up();
 	}
 	: sub {};
@@ -241,23 +256,6 @@ sub import {
     @_ = ($package, keys %arg);
     goto &Exporter::import;
 }
-
-=back
-
-=head1 TODO
-
-=over 4
-
-=item *
-
-Arrange to have the run() method executed by the C<D::P::LocalWorker> instead
-of the C<D::P::RemoteWorker>, in order to shift most of the load from the
-server to the clients.
-
-=item *
-
-run() should accept arguments, so that the Master can call each client with
-different arguments.
 
 =back
 

@@ -1,12 +1,21 @@
 Revision history for Distributed-Process
 
-0.10
+0.20    Fri Jun  3 16:04:04 CEST 2005
+        This release introduces another major change in the architecture. The
+        client side no longer requires threads, which should enable clients to
+        run on Windows machines. The server side workers each run their run()
+        method in a separate thread, communicating with the master when needed
+        through thread-safe queues. Clients can request that a method be run on
+        the server, for instance to get parameters without having their own
+        copy of a configuration file.
+
+0.10    Thu Mar 24 10:35:40 CET 2005
         The architecture has changed a lot. Now the master worker's run()
         method will actually call the run() method of the RemoteWorkers,
         instead of only letting them broadcast their remote __methods.
         This has some implications: notably, one can no longer call a __method
         with a coderef as argument to let it run at the master worker level,
-        this the real execution of run() is now done at the remote worker
+        since the real execution of run() is now done at the remote worker
         level.
         Remote methods (__methods) can now return values. The local worker will
         send the values to the server between the '/begin_return' and the

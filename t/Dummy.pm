@@ -2,24 +2,19 @@ package Dummy;
 
 use warnings;
 use strict;
-use threads;
-use threads::shared;
 
 use Distributed::Process; # qw/ :debug /;
 use Distributed::Process::Worker;
 our @ISA = qw/ Distributed::Process::Worker /;
 
-sub __test1 { DEBUG 'Dummy::__test1'; my $self = shift; $self->result('__test1 ' .uc $_[0]) }
-sub __test2 { DEBUG 'Dummy::__test2'; my $self = shift; $self->result('__test2 ' .uc $_[0] . ' ' . $self->get_result_from_list()) }
-sub __test3 { DEBUG 'Dummy::__test3'; my $self = shift; $self->result('__test3 ' .uc $_[0]) }
-
-sub __sleep { my $s = 2+int(rand(5)); DEBUG "sleeping for $s seconds"; sleep $s; return }
+sub test1 { DEBUG 'Dummy::test1'; my $self = shift; $self->result('test1 ' .uc $_[0]) }
+sub test2 { DEBUG 'Dummy::test2'; my $self = shift; $self->result('test2 ' .uc($_[0]) . ' ' . $self->get_result_from_list()) }
+sub test3 { DEBUG 'Dummy::test3'; my $self = shift; $self->result('test3 ' .uc $_[0]) }
 
 {
-    my $result : shared = 1;
+    my $result = 1;
     sub get_result_from_list {
 
-	my $self = shift;
 	INFO "get_result_from_list: yielding $result";
 	'result_' . $result++;
     }
@@ -27,19 +22,18 @@ sub __sleep { my $s = 2+int(rand(5)); DEBUG "sleeping for $s seconds"; sleep $s;
 
 sub run {
 
-    DEBUG '';
     my $self = shift;
 
-    $self->__sleep();
-    DEBUG 'about to run __test1';
-    $self->__test1($self->get_result_from_list());
-    $self->__sleep();
-    DEBUG 'about to run __test2';
-    $self->__test2($self->get_result_from_list());
+    DEBUG 'about to run test1';
+    $self->test1();
     DEBUG 'about to synchronise';
-    $self->synchro('meeting');
-    DEBUG 'about to run __test3';
-    $self->__test3($self->get_result_from_list());
+    $self->synchro('meeting 1');
+    DEBUG 'about to run test2';
+    $self->test2($self->run_on_server('get_result_from_list'));
+    DEBUG 'about to synchronise';
+    $self->synchro('meeting 2');
+    DEBUG 'about to run test3';
+    $self->test3($self->run_on_server('get_result_from_list'));
 }
 
 1;

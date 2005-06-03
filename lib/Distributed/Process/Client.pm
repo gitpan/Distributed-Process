@@ -10,6 +10,7 @@ Distributed::Process::Client - a class to run a client in a Distributed::Process
 =cut
 
 use Carp;
+use Socket qw/ :crlf /;
 use IO::Socket;
 use Distributed::Process;
 use Distributed::Process::Interface;
@@ -22,6 +23,7 @@ our @ISA = qw/ Distributed::Process::Interface /;
     use MyTest;
 
     $c = new Distributed::Process::Client
+	-id           => 'client1',
 	-worker_class => 'MyTest',
 	-port         => 8147,
 	-host         => 'localhost',
@@ -31,8 +33,7 @@ our @ISA = qw/ Distributed::Process::Interface /;
 =head1 DESCRIPTION
 
 This class handles the client part of the cluster. It derives its handling of
-the network connection from C<Distributed::Process::Interface>, simply
-overloading command_handlers() to handle more commands.
+the network connection from C<Distributed::Process::Interface>.
 
 A C<D::P::Worker> object must be associated to the Client, by means of the
 worker() or worker_class() methods, so that the client can run methods from it
@@ -41,38 +42,19 @@ when requested to do so by the server.
 =head2 Commands
 
 A C<D::P::Client> object will react on the following commands received on its
-in_handle(). They are implemented as callbacks returned by the
-command_handlers() method (see L<Distributed::Process::Interface>). The
-callbacks are given the full command as a list of words, i.e., the original
-command string is splitted on whitespace.
+in_handle().
 
 =over 4
 
-=item B</run> I<NAME>, I<LIST>
+=item B</run>
 
-Calls the worker's method called I<NAME> with I<LIST> as arguments.
-
-=item B</run_with_return> I<NAME>, I<LIST>
-
-Same as C</run> but sends the return values from method I<NAME> back to the
-server. The list of return values are sent one by line, preceded by
-C</begin_return> and followed by C</end_return>.
+Calls the worker's run() method. This is method should be overloaded by
+subclasses of C<D::P::Worker> to perform the real job that is to be distributed
+on the cluster.
 
 =item B</reset>
 
 Calls the worker's reset_result() method to flush its list of results.
-
-=item B</time> I<NAME>, I<LIST>
-
-Calls the worker's time() method, resulting in calling the worker's method
-called I<NAME> with I<LIST> as arguments while measuring its run time. The time
-is appended to the result() (see L<Distributed::Process::BaseWorker>).
-
-=item B</synchro> I<TOKEN>
-
-Returns the same line as the one received (i.e., C</run TOKEN>) after a small
-delay. The delay seems necessary to avoid the server receiving replies to a
-C</synchro> message before it starts expecting them.
 
 =item B</quit>
 
@@ -80,39 +62,19 @@ Exits the program.
 
 =item B</get_result>
 
-Returns the results from the worker. The results are preceded with the line
+Returns the results from the worker. The results are preceeded with the line
 C</begin_results> and followed by the word C<ok>. Each result line gets
-prefixed with the client's id() and a tab character (0x09).
+prefixed with the client's id() and a tab character ("C<\t>", ASCII 0x09).
 
 The worker itself returns its result line prefixed with a timestamp. An example
-of output could thus be (for a method invoked under C</time>):
+of output could thus be:
 
     /begin_results
-    client1	20050316-152519	Running method __test1
-    client1	20050316-152522	Time for running __test1: 2.1234 seconds
+    client1	20050316-152519	Running method test1
+    client1	20050316-152522	Time for running test1: 2.1234 seconds
     ok
 
 =back
-
-=cut
-sub command_handlers {
-
-    my $self = shift;
-    return (
-	$self->SUPER::command_handlers(),
-	[ qr|^/run_with_return|, sub { shift; my $cmd = shift; return('/begin_return', $self->worker()->$cmd(@_), '/end_return') } ],
-	[ qr|^/run|, sub { shift; my $cmd = shift; $self->worker()->$cmd(@_) } ],
-	[ qr|^/reset|, sub { $self->worker()->reset_result() } ],
-	[ qr|^/time|, sub { shift; $self->worker()->time(@_) } ],
-	[ qr|^/synchro|, sub { sleep 1; join ' ', @_ } ],
-	[ qr|^/quit|, sub { exit 0; }, '/quit' ],
-	[ qr|^/get_result|, sub {
-            sleep 1;
-            my $id = $self->id();
-            return('/begin_results', (map "$id\t$_", $self->worker()->result()), 'ok');
-        } ],
-    );
-}
 
 =head2 Methods
 
@@ -122,21 +84,11 @@ sub command_handlers {
 
 =item B<run>
 
-Reads line coming in from handle() and processes them using the handle_line()
-method inherited from C<D::P::Interface>.
+Reads line coming in from handle() and processes them.
 
-Each line is first C<chomp>ed and C<split> on whitespace. The words are sent as
-a list to handle_line(). When a regular expression from the list returned by
-command_handlers() matches the first word, the corresponding callback is
-invoked with the full list of words as arguments.
-
-The callbacks are expected to return a list of strings, which will be
-immediately sent back to the server. If they return an empty list, the single
-line "ok" is sent instead.
-
-Normally, callbacks should return an empty list and store their results using
-the result() method, which makes it possible for the server to retrieve the
-results later, when the work is done.
+Each line is first C<chomp>ed and C<split> on whitespace, and an action is
+performed depending on the first word on the line. See the list of known
+commands above.
 
 =cut
 
@@ -145,12 +97,32 @@ sub run {
     my $self = shift;
     DEBUG 'connecting';
     my $h = $self->handle();
+    local $/ = CRLF;
     $self->send("/worker " . $self->id());
-    while ( <$h> ) {
-	chomp;
-	my @response = $self->handle_line(split /\s+/);
-	@response = ('ok') unless @response;
-	$self->send($_) for @response;
+    while ( 1 ) {
+	no warnings qw/ uninitialized /;
+        my ($command, @arg) = split /\s+/, ($self->wait_for_pattern(qr{^/run|quit|reset|get_result}))[-1];
+	exit 1 unless $command;
+
+	no warnings qw/ uninitialized /;
+        for ( $command ) {
+            /run/ and do {
+                $self->worker()->run();
+                $self->send('/run_done');
+                last;
+            };
+            /quit/ and exit 0;
+            /reset/ and do {
+                $self->worker()->reset_result();
+                last;
+            };
+            /get_result/ and do {
+                my $id = $self->id();
+                $self->send('/begin_results');
+                $self->send("$id\t$_") foreach $self->worker()->result();
+                $self->send('ok');
+            };
+        }
     }
 }
 
@@ -178,6 +150,7 @@ sub handle {
 	PeerPort => $self->port(),
 	Proto    => 'tcp',
 	    or croak "Cannot connect to server: $!";
+    $self->{_handle}->autoflush(1);
     $self->{_handle};
 }
 
@@ -201,13 +174,15 @@ sub worker {
 
     if ( @_ ) {
 	$self->{_worker} = $_[0];
+	$self->{_worker}->client($self);
     }
     else {
 	$self->{_worker} ||= do {
 	    my $class = $self->worker_class();
-	    $class->new($self->worker_args());
+	    $class->new($self->worker_args(), -client => $self);
 	};
     }
+    $self->{_worker};
 }
 
 =item B<worker_args> I<LIST>

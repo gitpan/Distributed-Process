@@ -48,42 +48,14 @@ Master.
 
 =over 4
 
-=cut
-
-sub _add_interface {
-
-    my ($self, $interface) = @_;
-    $self->_select($interface->handle());
-
-    $self->{_interfaces}{$interface->handle()} = $interface;
-}
-
-sub _deselect {
-
-    my $self = shift;
-    $self->{_select}->remove(@_);
-}
-
-sub _find_interface {
-
-    my ($self, $handle) = @_;
-    return $self->{_interfaces}{$handle} if exists $self->{_interfaces}{$handle};
-}
-
-sub _interfaces {
-
-    my $self = shift;
-    return values %{$self->{_interfaces}};
-}
-
 =item B<listen>
 
 Starts listening on port(), waiting for incoming connections. If a new
 connection is made, it is supposed to be from a Worker, and the handle is thus
 passed on to the Master, by means of its add_worker() method.
 
-If a line is read from an already open handle, it is passed to the
-handle_line() method of its corresponding interface.
+When the master has_enough_workers(), the Server stops welcoming new
+connections and launches the Master's listen() method.
 
 =cut
 
@@ -92,32 +64,16 @@ sub listen {
     my $self = shift;
 
     my $lsn = new IO::Socket::INET ReuseAddr => 1, Listen => 1, LocalPort => $self->port();
-    #$lsn->autoflush(1);
     die $! unless $lsn;
-    $self->_select($lsn);
 
-    while ( my @ready = $self->_select()->can_read() ) {
-	DEBUG 'waiting for connections';
-	foreach my $fh ( @ready ) {
-	    if ( $fh == $lsn ) {
-		DEBUG 'new connection';
-		my $new_fh = $lsn->accept();
-		#$new_fh->autoflush(1);
-		my $worker = $self->master()->add_worker(-server => $self, -handle => $new_fh);
-		$self->_add_interface($worker);
-		next;
-	    }
-	    else {
-		my $interface = $self->_find_interface($fh);
-		my $line = <$fh>;
-		local $/ = CRLF;
-		chomp $line;
-		DEBUG "handling line '$line' via interface '$interface'";
-		my @response = $interface->handle_line($line);
-		$interface->send(@response) if @response;
-	    }
-	}
+    my $master = $self->master();
+    while ( 1 ) {
+	my $client = $lsn->accept();
+	$client->autoflush(1);
+	$master->add_worker(-server => $self, -handle => $client)->run();
+	last if $master->has_enough_workers();
     }
+    $master->listen();
 }
 
 =item B<master> I<MASTER>
@@ -137,41 +93,8 @@ sub master {
 	my $master = $_[0];
 	$self->{_master} = $master;
 	$master->server($self);
-	$self->_add_interface($master);
     }
     return $old;
-}
-
-=item B<quit>
-
-Sends a C</quit> command to all interfaces and exits the program.
-
-=cut
-
-sub quit {
-
-    my $self = shift;
-
-    foreach ( $self->_interfaces() ) {
-	$_->send('/quit') if $_->isa('Distributed::Process::RemoteWorker');
-    }
-    exit 0;
-}
-
-sub _remove_interface {
-
-    my ($self, $interface) = @_;
-    $self->_deselect($interface->handle());
-    delete $self->{_interfaces}{$interface->handle()};
-}
-
-sub _select {
-
-    my $self = shift;
-    $self->{_select} ||= new IO::Select;
-
-    $self->{_select}->add(@_) if @_;
-    $self->{_select};
 }
 
 =back

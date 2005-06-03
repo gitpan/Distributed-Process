@@ -19,25 +19,24 @@ our @ISA = qw/ Distributed::Process /;
 
 =head2 Methods
 
-None of these methods are actually implemented in this base class. There all
-implement in either Distributed::Process::LocalWorker,
-Distributed::Process::RemoteWorker or Distributed::Process::MasterWorker.
+None of these methods is actually implemented in this base class. They're all
+implemented either in Distributed::Process::LocalWorker, or in
+Distributed::Process::RemoteWorker.
 
-Methods in Distributed::Process::MasterWorker will invoke the methods by the same
-name on all the Distributed::Process::RemoteWorker subscribed with the server.
+Methods in Distributed::Process::LocalWorker will usually simply send a command
+to their RemoteWorker counterpart, asking it to perform some action on the
+server side.
 
-Methods in Distributed::Process::RemoteWorker will simply send a command to their
-connected client, asking it to run the same method locally.
-
-Methods in Distributed::Process::LocalWorker will do the actual job.
+Methods in Distributed::Process::RemoteWorker will perform the actions
+requested by the clients and possibly give a reply back.
 
 =over 4
 
 =item B<synchro> I<TOKEN>
 
 Waits for all the connected clients to reach this synchronisation point.
-I<TOKEN> is a message, mostly used to identify which synchronisation point is
-being reached when reading the debug output.
+I<TOKEN> is an identifier, used to identify which synchronisation point is
+being reached.
 
 =cut
 
@@ -46,31 +45,22 @@ sub synchro {}
 =item B<run>
 
 This must must be overloaded in subclasses to actually implement the task that
-is to be run remotely. Calls to methods whose name starts with a double
-underscore (as in C<__example>) will be run remotely, while all the others will
-be run locally.
+is to be run remotely. 
 
 =cut
 
 sub run {}
 
-=item B<postpone> I<NAME>, I<LIST>
+=item B<delay> I<TOKEN>
 
-Runs the method I<NAME> with the given I<LIST> of arguments after a short
-delay. The delay will change with each Worker in a session, so that the Master
-can arrange to have the Workers run their tasks a few moments after one another
-instead of running them all at one. See L<Distributed::Process::Master> for
-details.
+Just like synchro(), waits for all the connected clients to reach this point.
+But each client will be notified after a configurable amount of time. This
+allows the server to let the clients proceed within an interval from each
+other. See L<Distributed::Process::Master> for details.
 
 =cut
 
-sub postpone {
-
-    my $self = shift;
-    my $method = shift;
-
-    $self->$method(@_);
-}
+sub delay {}
 
 =item B<time> I<NAME>, I<LIST>
 

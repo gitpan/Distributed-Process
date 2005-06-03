@@ -1,43 +1,39 @@
+#!perl -T
 use Test::More;
 use strict;
 
 use lib 't';
-use Time::Local;
 
 use Distributed::Process;
 
 use Socket qw/ :crlf /;
 use IO::Socket;
-use IO::Select;
 $/ = CRLF;
 
-my $n_workers = 5;
-plan tests => 3 * ($n_workers - 1);
+my $n_workers = 3;
+plan tests => 3 * $n_workers;
 my $port = 8147;
 
-my %expected;
 for ( 1 .. $n_workers ) {
     my $pid = fork;
 
     if ( !$pid ) {
-	require Postpone;
+	require TestRun;
 	require Distributed::Process::Client;
 	sleep 2;
 	my $c = new Distributed::Process::Client
-	    -worker_class => 'Postpone',
+	    -worker_class => 'TestRun',
 	    -host => 'localhost',
 	    -port => $port,
-            -id  => "wrk$_",
+            -id   => "wrk$_",
 	;
 	$c->run();
 	exit 0;
     }
-    else {
-	$expected{"Running test$_"} = 1 for 1 .. 3;
-    }
 }
 
-require Postpone;
+require TestRun;
+@TestRun::data = qw/ milliways heartofgold fortytwo zaphod magrathea trillian /;
 require Distributed::Process::Master;
 require Distributed::Process::Server;
 my ($server, $parent) = IO::Socket->socketpair(AF_UNIX, SOCK_STREAM, PF_UNSPEC)
@@ -47,11 +43,10 @@ if ( ! $server_pid ) {
     die "Cannot fork: $!" unless defined($server_pid);
     $server->close();
     my $m = new Distributed::Process::Master
-        -worker_class => 'Postpone',
+	-worker_class => 'TestRun',
         -n_workers => $n_workers,
         -in_handle => $parent,
         -out_handle => $parent,
-	-frequency => .25,
     ;
     my $s = new Distributed::Process::Server master => $m, port => $port;
     $s->listen();
@@ -59,34 +54,25 @@ if ( ! $server_pid ) {
 }
 $parent->close();
 
-my %result = ();
 while ( <$server> ) {
     last if /ready to run/;
 }
-
 print $server "/run" . CRLF;
+$/ = CRLF;
+my %expected = map { $_ => 1 } @TestRun::data;
 while ( <$server> ) {
     chomp;
-    /^ok/ and print $server "/quit" . CRLF;
+    /ok/ and print $server "/quit" . CRLF;
     /\t/ or next;
     my ($id, $date, $msg) = split /\t/;
-    push @{$result{$msg} ||= []}, $date;
+    my ($n) = $id =~ /(\d+)/;
+    for ( $msg ) {
+	if ( /next is (.*)/ ) {
+	    ok($expected{$1}--);
+	}
+	elsif ( /Square of (\d+) is (\d+)/ ) {
+	    is($2, $1 ** 2);
+	}
+    }
 }
 
-foreach my $test ( sort keys %result ) {
-    $_ = $result{$test};
-    for ( @$_ ) {
-        my ($Y, $m, $d, $H, $M, $S) = /(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)/;
-        $Y -= 1900;
-        $m--;
-        $_ = timelocal $S, $M, $H, $d, $m, $Y;
-    }
-    @$_ = sort @$_;
-    my $x = shift @$_;
-    while ( @$_ ) {
-        my $y = shift @$_;
-        my $diff = abs($x - $y);
-        ok($diff == 4 || $diff == 5, "$test: comparing $x and $y");
-        $x = $y;
-    }
-}

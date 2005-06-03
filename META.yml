@@ -1,6 +1,6 @@
---- #YAML:1.0
+---
 name: Distributed-Process
-version: 0.10
+version: 0.20
 author:
   - Cédric Bouvier <cbouvi@cpan.org>
 abstract: |-
@@ -13,7 +13,7 @@ requires:
 provides:
   Distributed::Process:
     file: lib/Distributed/Process.pm
-    version: 0.10
+    version: 0.20
   Distributed::Process::BaseWorker:
     file: lib/Distributed/Process/BaseWorker.pm
   Distributed::Process::Client:
@@ -24,8 +24,6 @@ provides:
     file: lib/Distributed/Process/LocalWorker.pm
   Distributed::Process::Master:
     file: lib/Distributed/Process/Master.pm
-  Distributed::Process::MasterWorker:
-    file: lib/Distributed/Process/MasterWorker.pm
   Distributed::Process::RemoteWorker:
     file: lib/Distributed/Process/RemoteWorker.pm
   Distributed::Process::Server:

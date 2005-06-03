@@ -16,89 +16,59 @@ use IO::Socket;
 use Socket qw/ :crlf /;
 use Distributed::Process;
 import Distributed::Process;
-use Thread::Semaphore;
 our @ISA = qw/ Distributed::Process /;
-
-my $CAN_SEND = new Thread::Semaphore;
 
 =head2 Methods
 
 =over 4
 
-=item B<command_handlers>
-
-Returns a list of lists defining patterns against which to try and match a
-line, and what to do if a line matches it.
-
-Subclasses may overload this class to enable other commands:
-
-    sub command_handlers {
-	my $self = shift;
-	my @c = $self->SUPER::command_handlers();
-	push @c, [ qr/regex/, sub { 'what to do with line' . $_[0] }, 'test' ];
-	push @c, [ qr/^another/i, sub { $self->do_something(@_) }, 'another test' ];
-    }
-
-The first item in each array ref is a regular expression, against which the
-lines coming in through the input stream will be matched. When a match is
-found, the second item is used.
-
-If the second item is a string, it is sent back, i.e., printed to the output
-stream. If is a coderef, that coderef is executed, passing it the incoming
-line. The list of values returned by the coderef are sent to the output stream.
-
-The third item is optional and will be used in debugging messages to identify
-which regular expression is being used.
-
 =cut
-
-sub command_handlers {
-
-    my $self = shift;
-    return (
-	[ qr|/ping|, 'pong' ],
-    );
-}
-
-=item B<handle_line> I<LIST>
-
-Compares a line with the patterns returned by command_handlers() and, if the
-pattern matches, run the corresponding callback or returns the corresponding
-string. Once a pattern has matched, handle_line() returns and the remaining
-patterns are not checked.
-
-The callbacks are invoked with the full I<LIST> of arguments to handle_line(),
-although only the first argument is matched against the regular expression.
-
-Returns C<undef> if no pattern could match.
-
-=cut
-
-sub handle_line {
-
-    my $self = shift;
-
-    my @response;
-    DEBUG "handling line '@_'";
-    warn "$self received undef" unless defined($_[0]);
-    foreach ( $self->command_handlers() ) {
-	next unless $_[0] =~ /$$_[0]/;
-	DEBUG "  $$_[2] matched" if $$_[2];
-	if ( ref($$_[1]) eq 'CODE' ) {
-	    @response = ($$_[1]->(@_));
-	}
-	else {
-	    @response = ($$_[1]);
-	}
-	last;
-    }
-    @response = () if @response == 1 && !defined($response[0]);
-    @response;
-}
 
 sub handle {
     goto &in_handle;
 }
+
+=item B<wait_for_pattern> I<REGEX>
+
+Reads lines on the connection in_handle() until the line matches I<REGEX>.
+Returns the list of all the read lines, including the one that matched.
+
+=cut
+
+sub wait_for_pattern {
+
+    my $self = shift;
+    my $pattern = shift;
+    my $fh = $self->in_handle();
+    local $/ = CRLF;
+    my @res = ();
+    DEBUG "waiting for $pattern";
+    local $_;
+    while ( $self->available_for_reading() && defined($_ = <$fh>) ) {
+        chomp;
+	DEBUG "received line '$_'";
+        push @res, $_;
+        next unless /$pattern/;
+        return @res;
+    }
+    return;
+}
+
+=item B<available_for_reading>
+
+This method is invoked by wait_for_pattern() before reading a line on
+in_handle(), to decide whether to stop waiting for a given pattern. If
+available_for_reading() returns true, wait_for_pattern() will go on waiting for
+lines to flow in; if it yields false, wait_for_pattern() will return C<undef>.
+
+By default, available_for_reading() always returns C<1>, which means that
+wait_for_pattern() indefinitely reads lines from in_handle() until one of them
+matches the given pattern. Subclasses can overload available_for_reading() to
+return C<0> should something different occur.
+
+=cut
+
+sub available_for_reading { 1 }
 
 =item B<send> I<LIST>
 
@@ -109,13 +79,10 @@ Prints each string in I<LIST> with a CR+LF sequence to the output stream.
 sub send {
 
     my $self = shift;
-    my $fh = $self->out_handle();
+
     foreach ( @_ ) {
-    $CAN_SEND->down();
-	DEBUG "sending: $_";
-	print $fh $_ . CRLF;
-	select undef, undef, undef, 0.05;
-    $CAN_SEND->up();
+        DEBUG "sending '$_'";
+        print { $self->out_handle() } $_ . CRLF;
     }
 }
 
@@ -134,6 +101,10 @@ value. When called without arguments, they return the current value.
 
 The C<P::D::Server> under which the Interface is running.
 
+=item B<id>
+
+A unique identifier for the interface.
+
 =item B<handle>
 
 =item B<in_handle>
@@ -148,7 +119,7 @@ The C<IO::Handle> object that represents the output stream.
 
 =cut
 
-foreach my $method ( qw/ server in_handle out_handle / ) {
+foreach my $method ( qw/ _queue id server in_handle out_handle / ) {
 
     no strict 'refs';
     *$method = sub {

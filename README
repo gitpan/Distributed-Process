@@ -8,13 +8,10 @@ would send queries to a server at the same time, but it might prove useful for
 other purposes.
 
 This distribution provides code to run server to conduct the "workers", and to
-run the client that do the actual work.
+run the clients that do the actual work.
 
 The task to distribute must be implemented in a subclass of
-Distributed::Process::Worker, by overloading its run() method. Any call to a
-method whose name starts with a double underscore (__method) will be sent to
-the clients, which will run it, and send the results back to the server for
-analysis.
+Distributed::Process::Worker, by overloading its run() method.
 
 Please read the documentation for Distributed::Process for further details, and
 remember that this is still alpha code.

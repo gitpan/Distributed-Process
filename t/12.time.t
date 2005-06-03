@@ -11,10 +11,9 @@ use IO::Socket;
 $/ = CRLF;
 
 my $n_workers = 3;
-plan tests => 6 * $n_workers;
+plan tests => 3 * $n_workers;
 my $port = 8147;
 
-my %expected;
 for ( 1 .. $n_workers ) {
     my $pid = fork;
 
@@ -31,18 +30,6 @@ for ( 1 .. $n_workers ) {
 	$c->run();
 	exit 0;
     }
-    else {
-        no warnings 'uninitialized';
-        my $o = 3 * ($_ - 1);
-	$expected{"__test1 RESULT_" . ($o + 1)} = 1;
-	$expected{"__test2 RESULT_" . ($o + 2) . " RESULT_1"} = 1;
-	$expected{"__test3 RESULT_" . ($o + 3)} = 1;
-
-        $o = 3 * ($n_workers + $_ - 1);
-	$expected{"__test1 RESULT_" . ($o + 1)} = 1;
-	$expected{"__test2 RESULT_" . ($o + 2) . " RESULT_2"} = 1;
-	$expected{"__test3 RESULT_" . ($o + 3)} = 1;
-    }
 }
 
 require TestTime;
@@ -55,7 +42,7 @@ if ( ! $server_pid ) {
     die "Cannot fork: $!" unless defined($server_pid);
     $server->close();
     my $m = new Distributed::Process::Master
-        -worker_class => 'TestTime',
+	-worker_class => 'TestTime',
         -n_workers => $n_workers,
         -in_handle => $parent,
         -out_handle => $parent,
@@ -76,10 +63,16 @@ while ( <$server> ) {
     /ok/ and print $server "/quit" . CRLF;
     /\t/ or next;
     my ($id, $date, $msg) = split /\t/;
-    if ( my ($n, $t) = $msg =~ /Time for running __test(\d): ([\d.]+) seconds/ ) {
-        is($n, sprintf("%.0f", $t));
-    }
-    else {
-        ok($expected{$msg});
+    my ($n) = $id =~ /(\d+)/;
+    for ( $msg ) {
+	if ( /Time for running to_be_timed: ([\d.]+) seconds/ ) {
+	    is($n, sprintf("%.0f", $1), "execution should take $n seconds (really took $1)");
+	}
+	elsif ( /sleeping for (\d+) seconds/ ) {
+	    is($n, $1, "announced time");
+	}
+	elsif ( /got this as params: (.*)/ ) {
+	    is("bammbamm pebbles fred", $1, "parameters transmitted");
+	}
     }
 }

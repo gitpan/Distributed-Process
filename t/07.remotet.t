@@ -1,5 +1,5 @@
 #!perl -T
-use Test::More tests => 4;
+use Test::More tests => 22;
 
 use Distributed::Process::Worker;
 use Distributed::Process::RemoteWorker;
@@ -12,6 +12,6 @@ Test::A::->go_remote();
 @Test::B::ISA = qw/ Test::A /;
 @Test::C::ISA = qw/ Test::B Test::A /;
 
-is_deeply([Test::A->ancestors()], [ qw/ Distributed::Process::Worker Distributed::Process::RemoteWorker Distributed::Process::BaseWorker Distributed::Process Exporter Distributed::Process::Interface / ]);
-is_deeply([Test::B->ancestors()], [ qw/ Test::A Distributed::Process::Worker Distributed::Process::RemoteWorker Distributed::Process::BaseWorker Distributed::Process Exporter Distributed::Process::Interface / ]);
-is_deeply([Test::C->ancestors()], [ qw/ Test::B Test::A Distributed::Process::Worker Distributed::Process::RemoteWorker Distributed::Process::BaseWorker Distributed::Process Exporter Distributed::Process::Interface / ]);
+ok(Test::A->isa($_), "Test::A is a $_") foreach qw/ Distributed::Process::Worker Distributed::Process::RemoteWorker Distributed::Process::BaseWorker Distributed::Process Exporter Distributed::Process::Interface /;
+ok(Test::B->isa($_), "Test::B is a $_") foreach qw/ Test::A Distributed::Process::Worker Distributed::Process::RemoteWorker Distributed::Process::BaseWorker Distributed::Process Exporter Distributed::Process::Interface /;
+ok(Test::C->isa($_), "Test::C is a $_") foreach qw/ Test::B Test::A Distributed::Process::Worker Distributed::Process::RemoteWorker Distributed::Process::BaseWorker Distributed::Process Exporter Distributed::Process::Interface /;

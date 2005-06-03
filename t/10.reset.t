@@ -12,10 +12,9 @@ use IO::Select;
 $/ = CRLF;
 
 my $n_workers = 3;
-plan tests => $n_workers * 2 + 2;
+plan tests => $n_workers + 3;
 my $port = 8147;
 
-my %expected;
 for ( 1 .. $n_workers ) {
     my $pid = fork;
 
@@ -32,9 +31,6 @@ for ( 1 .. $n_workers ) {
 	;
 	$c->run();
 	exit 0;
-    }
-    else {
-	$expected{"wrk$_"} = 1;
     }
 }
 
@@ -68,8 +64,17 @@ for ( 1 .. $n_workers ) {
 my $line = <$server>;
 like($line, qr/ready to run/, "Workers all there");
 print $server "/run" . CRLF;
+my $n;
 while ( <$server> ) {
-    /(\w+)\t[\d-]+\tok/ and ok(delete $expected{$1}, "Result from $1");
-    /^ok/ and ok(/^ok/,  "Final 'ok'"), last;
+    /^ok/ && last || $n++;
+}
+is($n, $n_workers, 'Received one result line per worker');
+print $server "/reset" . CRLF;
+sleep 1;
+print $server "/run" . CRLF;
+$n = 0;
+while ( <$server> ) {
+    /^ok/ && last || $n++;
 }
 print $server "/quit" . CRLF;
+is($n, $n_workers, 'Received no more than one result line per worker');
